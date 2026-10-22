@@ -144,7 +144,7 @@ function nav(atual) {
 function screen(inner, tab, opts = {}) { return `<div class="screen ${opts.light ? 'light' : ''} ${opts.noNav ? 'no-nav' : ''}">${inner}</div>${opts.noNav ? '' : nav(tab)}`; }
 function hero({ eyebrow, title, sub, back, right = '', ov = '', meta = '', extra = '', logo = false }) {
   return `<header class="hero ${ov}">${MOTIF}
-    <div class="hero-top">${back ? `<a class="glass-btn" href="#${back}" aria-label="Voltar">${ic.back()}</a>` : logo ? `<img class="logo" src="${LOGO.sigla}" alt="SALT-FAAMA">` : '<span></span>'}${right}</div>
+    <div class="hero-top">${back ? `<a class="glass-btn" href="#${back}" aria-label="Voltar">${ic.back()}</a>` : logo ? `<img class="logo" src="${LOGO.branco}" alt="SALT-FAAMA">` : '<span></span>'}${right}</div>
     ${title ? `<div class="hero-title">${eyebrow ? `<span class="eyebrow">${eyebrow}</span>` : ''}<h1>${esc(title)}</h1>${sub ? `<span class="sub">${sub}</span>` : ''}${meta ? `<div class="meta">${meta}</div>` : ''}</div>` : ''}${extra}</header>`;
 }
 function topbar(back, center = '', right = '<span style="width:44px"></span>') { return `<div class="topbar"><a class="light-btn" href="#${back}" aria-label="Voltar">${ic.back()}</a>${center}${right}</div>`; }
@@ -206,7 +206,7 @@ function pgAuth() {
       <svg style="position:absolute;left:-40px;bottom:120px;width:470px;height:260px" viewBox="0 0 470 260" fill="none" aria-hidden="true"><path d="M0 230C120 200 250 140 470 20" stroke="#C9A24E" stroke-opacity=".32" stroke-width="1.4"/><path d="M0 250C130 218 265 156 470 44" stroke="#C9A24E" stroke-opacity=".22" stroke-width="1.4"/><path d="M0 270C140 236 280 172 470 68" stroke="#C9A24E" stroke-opacity=".14" stroke-width="1.4"/></svg>
       <div class="welcome-inner">
         <img class="logo" src="${LOGO.branco}" alt="SALT-FAAMA · Seminário em Missão">
-        <div class="stage"><div class="mini-cred"><div class="back"></div><div class="front">${CARD_MOTIF}<div class="l"><img src="${LOGO.sigla}" alt=""><div style="display:flex;flex-direction:column;gap:5px"><span style="font-size:9px;font-weight:800;letter-spacing:.18em;color:#E0BF73">CREDENCIAL</span><span style="font-size:15px;font-weight:700">Seu nome aqui</span><span style="font-size:11px;color:#B7C6D8">RA 000000 · 1º semestre</span></div></div><div class="qr">${qrSvg('SALT-FAAMA')}</div></div></div></div>
+        <div class="stage"><div class="mini-cred"><div class="back"></div><div class="front">${CARD_MOTIF}<div class="l"><img src="${LOGO.branco}" alt=""><div style="display:flex;flex-direction:column;gap:5px"><span style="font-size:9px;font-weight:800;letter-spacing:.18em;color:#E0BF73">CREDENCIAL</span><span style="font-size:15px;font-weight:700">Seu nome aqui</span><span style="font-size:11px;color:#B7C6D8">RA 000000 · 1º semestre</span></div></div><div class="qr">${qrSvg('SALT-FAAMA')}</div></div></div></div>
         <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:26px"><h1>Cada aula conta.</h1><p>Cadastre-se para receber sua credencial digital. Com ela, sua presença é registrada em segundos e seus certificados ficam sempre à mão.</p></div>
         <div style="display:flex;flex-direction:column;gap:12px">
           <button class="btn btn-gold btn-block" data-mode="cadastro">Criar cadastro ${ic.arrow()}</button>
@@ -221,7 +221,7 @@ function pgAuth() {
   const titulos = { cadastro: ['Crie seu cadastro', 'Leva menos de um minuto. Depois que a secretaria aprovar seu cadastro, sua credencial com QR Code fica pronta.'], entrar: ['Entrar', 'Use o e-mail e a senha do seu cadastro.'], esqueci: ['Recuperar senha', 'Enviaremos um link para você criar uma nova senha.'] };
   const [t, s] = titulos[m];
   app.innerHTML = `<div class="screen light no-nav"><div class="auth">
-    <div class="topbar"><button class="light-btn" data-mode="${m === 'esqueci' ? 'entrar' : 'welcome'}" aria-label="Voltar">${ic.back()}</button><img src="${LOGO.siglaMarinho}" alt="SALT-FAAMA" style="width:118px"><span style="width:44px"></span></div>
+    <div class="topbar"><button class="light-btn" data-mode="${m === 'esqueci' ? 'entrar' : 'welcome'}" aria-label="Voltar">${ic.back()}</button><img src="${LOGO.marinho}" alt="SALT-FAAMA · Seminário em Missão" style="width:150px"><span style="width:44px"></span></div>
     <div style="padding:30px 24px 0;display:flex;flex-direction:column;gap:8px"><h1 style="font-size:28px;font-weight:800;line-height:1.12;color:var(--navy-800)">${t}</h1><p style="font-size:14.5px;color:#5F6C7B">${s}</p></div>
     <div id="msg" style="padding:16px 24px 0"></div>
     ${m === 'cadastro' ? `<form class="form" id="f" style="padding:10px 24px 0" novalidate>
@@ -282,7 +282,7 @@ function pgAuth() {
 }
 function pgNovaSenha() {
   app.innerHTML = `<div class="screen light no-nav"><div class="auth"><div style="padding:60px 24px 0;display:flex;flex-direction:column;gap:16px">
-    <img src="${LOGO.siglaMarinho}" alt="SALT-FAAMA" style="width:118px"><h1 style="font-size:28px;font-weight:800;color:var(--navy-800)">Nova senha</h1><div id="msg"></div>
+    <img src="${LOGO.marinho}" alt="SALT-FAAMA · Seminário em Missão" style="width:150px"><h1 style="font-size:28px;font-weight:800;color:var(--navy-800)">Nova senha</h1><div id="msg"></div>
     <form class="form" id="f"><label class="field">Nova senha<span class="input-wrap">${ic.lock()}<input id="s" type="password" minlength="6" autocomplete="new-password" required></span></label><button class="btn btn-navy btn-block">Salvar nova senha</button></form></div></div></div>`;
   document.getElementById('f').onsubmit = async e => { e.preventDefault(); const { error } = await sb.auth.updateUser({ password: document.getElementById('s').value });
     if (error) return document.getElementById('msg').innerHTML = `<div class="banner err">${esc(erro(error))}</div>`;
@@ -310,11 +310,11 @@ function pgSemPerfil() {
 let wakeLock = null;
 async function abrirQR() {
   const p = S.perfil; const el = document.createElement('div'); el.className = 'qr-full';
-  el.innerHTML = `<div class="top"><img src="${LOGO.sigla}" alt="SALT-FAAMA"><button class="glass-btn round" aria-label="Fechar">${ic.close()}</button></div>
+  el.innerHTML = `<div class="top"><img src="${LOGO.branco}" alt="SALT-FAAMA"><button class="glass-btn round" aria-label="Fechar">${ic.close()}</button></div>
     <div class="badge-card"><div class="head"><span class="eyebrow">Credencial</span><span class="status ok" style="font-size:11px">Ativa</span></div>
       <div class="qr">${qrSvg(qrPayload(p))}</div><div class="sep"></div>
       <div class="who"><b>${esc(p.nome)}</b><small>${idLinha(p)}</small></div>
-      <div class="foot"><img src="${LOGO.sigla}" alt=""></div></div>
+      <div class="foot"><img src="${LOGO.branco}" alt=""></div></div>
     <div class="qr-hint"><span style="display:inline-flex;align-items:center;gap:8px">${ic.sun()} Aumente o brilho se a leitura falhar</span><small>Código pessoal e intransferível</small></div>`;
   document.body.appendChild(el);
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch (e) { wakeLock = null; }

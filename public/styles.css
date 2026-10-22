@@ -320,3 +320,10 @@ p{margin:0}
 .scan-msg{background:rgba(3,12,24,.58);padding:7px 14px;border-radius:999px;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);width:max-content;max-width:calc(100% - 40px);left:50%;transform:translateX(-50%);text-align:center}
 .mini-cred .motif{position:absolute;left:-20px;bottom:-14px;width:260px;height:90px;pointer-events:none}
 .mini-cred .front .l,.mini-cred .qr{position:relative}
+/* logo completa (com "Seminário em Missão") */
+.hero-top .logo{width:150px}
+.boot img{width:230px}
+.mini-cred .front .l img{width:124px}
+.qr-full .top img{width:150px;height:auto}
+.badge-card .foot{height:56px}
+.badge-card .foot img{width:124px}
