@@ -30,12 +30,13 @@ const idLinha = p => ehAluno(p) ? `RA ${esc(p.ra)} · ${semTxt(p.semestre)}` : P
 const iniciais = nome => (nome || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
 const primeiroNome = nome => { const t = (nome || '').trim().split(/\s+/); return /\.$/.test(t[0] || '') && t[1] ? t[0] + ' ' + t[1] : (t[0] || ''); };
 const nomeCurto = nome => { const t = (nome || '').trim().split(/\s+/); let i = /\.$/.test(t[0] || '') ? 2 : 1; const out = t.slice(0, i); if (t[i]) { out.push(t[i]); if (/^(d[aeo]s?|e)$/i.test(t[i]) && t[i + 1]) out.push(t[i + 1]); } return out.join(' '); };
-const PAPEL = { admin: 'Administrador', secretario: 'Secretário(a)', professor: 'Professor(a)', monitor: 'Monitor(a)', aluno: 'Aluno(a)' };
+const PAPEL = { admin: 'Administrador', vice: 'Vice-administrador(a)', secretario: 'Secretário(a)', professor: 'Professor(a)', monitor: 'Monitor(a)', aluno: 'Aluno(a)' };
 const role = () => S.perfil ? S.perfil.papel : null;
-const isAdmin = () => role() === 'admin';
-const isGestao = () => ['admin', 'secretario'].includes(role());
-const canChamada = () => ['admin', 'secretario', 'professor', 'monitor'].includes(role());
-const canAviso = () => ['admin', 'secretario', 'professor'].includes(role());
+const isAdmin = () => ['admin', 'vice'].includes(role());
+const isTitular = () => role() === 'admin';
+const isGestao = () => ['admin', 'vice', 'secretario'].includes(role());
+const canChamada = () => ['admin', 'vice', 'secretario', 'professor', 'monitor'].includes(role());
+const canAviso = () => ['admin', 'vice', 'secretario', 'professor'].includes(role());
 function saudacao() { const h = new Date().getHours(); return h < 12 ? 'Bom dia,' : h < 18 ? 'Boa tarde,' : 'Boa noite,'; }
 function quando(ts) {
   const d = new Date(ts), now = new Date();
@@ -166,12 +167,13 @@ async function contarNaoLidos() {
 const ROTAS = {
   inicio: pgInicio, eventos: pgEventos, evento: pgEvento, avisos: pgAvisos, aviso: pgAviso, 'novo-aviso': pgNovoAviso,
   calendario: pgCalendario, chamada: pgChamada, gestao: pgGestao, gevento: pgGEvento, 'form-evento': pgFormEvento,
-  pessoas: pgPessoas, pessoa: pgPessoa, departamentos: pgDepartamentos, conta: pgConta,
+  pessoas: pgPessoas, pessoa: pgPessoa, cadastros: pgCadastros, departamentos: pgDepartamentos, conta: pgConta,
 };
 async function render() {
   if (S.recovery) return pgNovaSenha();
   if (!S.session) return pgAuth();
-  if (!S.perfil) { await carregarPerfil(); if (!S.perfil) return pgSemPerfil(); await contarNaoLidos(); }
+  if (!S.perfil) { await carregarPerfil(); if (!S.perfil) return pgSemPerfil(); if (S.perfil.status === 'aprovado') await contarNaoLidos(); }
+  if (S.perfil.status !== 'aprovado') return pgAguardando();
   const { r, id } = rota();
   const fn = ROTAS[r] || pgInicio;
   try { await fn(id); } catch (e) { falha(e, r); }
@@ -216,7 +218,7 @@ function pgAuth() {
     ligarInstalar(); return;
   }
   const sem = Array.from({ length: NSEM }, (_, i) => `<option value="${i + 1}">${semTxt(i + 1)}</option>`).join('');
-  const titulos = { cadastro: ['Crie seu cadastro', 'Leva menos de um minuto. Ao concluir, sua credencial com QR Code fica pronta.'], entrar: ['Entrar', 'Use o e-mail e a senha do seu cadastro.'], esqueci: ['Recuperar senha', 'Enviaremos um link para você criar uma nova senha.'] };
+  const titulos = { cadastro: ['Crie seu cadastro', 'Leva menos de um minuto. Depois que a secretaria aprovar seu cadastro, sua credencial com QR Code fica pronta.'], entrar: ['Entrar', 'Use o e-mail e a senha do seu cadastro.'], esqueci: ['Recuperar senha', 'Enviaremos um link para você criar uma nova senha.'] };
   const [t, s] = titulos[m];
   app.innerHTML = `<div class="screen light no-nav"><div class="auth">
     <div class="topbar"><button class="light-btn" data-mode="${m === 'esqueci' ? 'entrar' : 'welcome'}" aria-label="Voltar">${ic.back()}</button><img src="${LOGO.siglaMarinho}" alt="SALT-FAAMA" style="width:118px"><span style="width:44px"></span></div>
@@ -275,7 +277,7 @@ function pgAuth() {
     const { data, error } = await sb.auth.signUp({ email, password: val('senha'), options: { data: { nome, ra, semestre }, emailRedirectTo: location.origin + location.pathname } });
     b.disabled = false;
     if (error) return msg(esc(erro(error)), 'err');
-    if (!data.session) { S.auth = 'entrar'; pgAuth(); document.getElementById('msg').innerHTML = `<div class="banner ok">Cadastro criado. Enviamos um e-mail para <b>${esc(email)}</b>. Confirme e depois entre com sua senha.</div>`; }
+    if (!data.session) { S.auth = 'entrar'; pgAuth(); document.getElementById('msg').innerHTML = `<div class="banner ok">Cadastro criado. Enviamos um e-mail para <b>${esc(email)}</b>. Confirme e depois entre com sua senha. Seu cadastro também passará pela aprovação da secretaria.</div>`; }
   };
 }
 function pgNovaSenha() {
@@ -285,6 +287,19 @@ function pgNovaSenha() {
   document.getElementById('f').onsubmit = async e => { e.preventDefault(); const { error } = await sb.auth.updateUser({ password: document.getElementById('s').value });
     if (error) return document.getElementById('msg').innerHTML = `<div class="banner err">${esc(erro(error))}</div>`;
     S.recovery = false; history.replaceState(null, '', location.pathname); toast('Senha alterada.'); render(); };
+}
+function pgAguardando() {
+  const p = S.perfil, rec = p.status === 'recusado';
+  app.innerHTML = `<div class="welcome"><div class="welcome-inner" style="justify-content:center;gap:26px">
+    <img class="logo" src="${LOGO.branco}" alt="SALT-FAAMA · Seminário em Missão">
+    <div style="display:flex;flex-direction:column;gap:12px"><span class="icon-tile ${rec ? '' : 'gold'}" style="width:56px;height:56px;border-radius:18px">${rec ? ic.x(20, 2.6) : ic.hourglass()}</span>
+      <h1 style="font-size:30px">${rec ? 'Cadastro não aprovado' : 'Cadastro em análise'}</h1>
+      <p>${rec ? 'Seu cadastro não foi aprovado. Se acha que houve um engano, procure a secretaria do seminário.' : `Olá, ${esc(primeiroNome(p.nome))}! Recebemos seu cadastro. Assim que a secretaria ou a administração aprovar, você terá acesso ao app e à sua credencial.`}</p>
+      <p style="font-size:13px;color:#9FB2C8">${esc(p.nome)} · RA ${esc(p.ra)} · ${semTxt(p.semestre)}</p></div>
+    <div style="display:flex;flex-direction:column;gap:12px">${rec ? '' : '<button class="btn btn-gold btn-block" id="ver">Verificar de novo</button>'}<button class="btn btn-glass btn-block" id="sair">Sair</button></div>
+  </div></div>`;
+  const v = document.getElementById('ver'); if (v) v.onclick = async () => { v.disabled = true; await carregarPerfil(); if (S.perfil && S.perfil.status === 'aprovado') { toast('Cadastro aprovado. Bem-vindo(a)!'); render(); } else { v.disabled = false; toast('Ainda em análise.'); } };
+  document.getElementById('sair').onclick = async () => { await sb.auth.signOut(); S.auth = 'welcome'; location.hash = ''; };
 }
 function pgSemPerfil() {
   app.innerHTML = `<div class="screen light no-nav"><div class="content pad" style="padding-top:80px"><div class="banner err">Não encontramos o seu cadastro. Saia e tente novamente, ou fale com a secretaria.</div><button class="btn btn-outline" id="sair">Sair</button></div></div>`;
@@ -712,6 +727,7 @@ async function abrirScanner(t, aula, alunos, presentes, aoFechar) {
         card('warn', 'PRESENÇA DESFEITA', data.nome, 'Leia o QR Code correto');
       });
     } else if (data.status === 'ja_presente') card('ok', 'JÁ ESTAVA PRESENTE', data.nome, sub);
+    else if (data.status === 'nao_aprovado') card('warn', 'CADASTRO AINDA NÃO APROVADO', data.nome, 'Aprovação em Gestão › Solicitações de cadastro');
     else if (data.status === 'pendente') card('warn', 'INSCRIÇÃO AGUARDANDO APROVAÇÃO', data.nome, sub);
     else if (data.status === 'recusada') card('bad', 'INSCRIÇÃO RECUSADA NESTE EVENTO', data.nome, sub);
     else if (data.status === 'fora_da_turma') card('bad', 'NÃO ESTÁ INSCRITO NESTE EVENTO', data.nome, sub);
@@ -723,13 +739,14 @@ async function abrirScanner(t, aula, alunos, presentes, aoFechar) {
 async function pgGestao() {
   if (!isGestao()) return ir('inicio');
   loading('gestao');
-  const [turmas, pend, dl] = await Promise.all([q(sb.from('turmas').select('*').order('inicio', { ascending: false, nullsFirst: false })), q(sb.from('matriculas').select('turma_id').eq('status', 'pendente')), deps()]);
+  const [turmas, pend, dl, cad] = await Promise.all([q(sb.from('turmas').select('*').order('inicio', { ascending: false, nullsFirst: false })), q(sb.from('matriculas').select('turma_id').eq('status', 'pendente')), deps(), q(sb.from('perfis').select('id').eq('status', 'pendente'))]);
   const nPend = {}; pend.forEach(p => nPend[p.turma_id] = (nPend[p.turma_id] || 0) + 1);
   const dn = id => (dl.find(d => d.id === id) || {}).nome || 'Sem departamento';
   const ativos = turmas.filter(t => !encerrado(t)), antigos = turmas.filter(encerrado);
   const linha = t => `<a class="row-card" href="#gevento/${t.id}">${dateTile(t.inicio, encerrado(t) ? 'soft' : '')}<div class="row-main"><span class="row-title">${esc(t.nome)}</span><span class="row-sub">${esc(dn(t.departamento_id))}</span>${nPend[t.id] ? `<span class="status gold">${nPend[t.id]} inscrição(ões) aguardando aprovação</span>` : `<span class="status ${t.inscricoes_abertas && !encerrado(t) ? 'ok' : 'muted'}">${encerrado(t) ? 'Encerrado' : t.inscricoes_abertas ? 'Inscrições abertas' : 'Inscrições fechadas'}</span>`}</div>${ic.chev()}</a>`;
-  app.innerHTML = screen(`${hero({ logo: true, right: `<span class="role-chip">${ic.shield()} ${PAPEL[role()]}</span>`, extra: `<div class="hero-title"><span class="eyebrow">${isAdmin() ? 'Administração' : 'Secretaria do Seminário'}</span><h1>Gestão</h1></div>` })}
+  app.innerHTML = screen(`${hero({ logo: true, right: `<span class="role-chip">${ic.shield()} ${PAPEL[role()]}</span>`, extra: `<div class="hero-title"><span class="eyebrow">${role() === 'vice' ? 'Vice-administração' : isAdmin() ? 'Administração' : 'Secretaria do Seminário'}</span><h1>Gestão</h1></div>` })}
     <div class="content pad">
+      <a class="row-card ${cad.length ? 'unread' : ''}" href="#cadastros"><span class="icon-tile ${cad.length ? 'gold' : ''}">${ic.users()}</span><div class="row-main"><span class="row-title">Solicitações de cadastro</span><span class="row-sub">${cad.length ? `${cad.length} aguardando aprovação` : 'Nenhuma pendente'}</span></div>${cad.length ? `<span class="pill gold">${cad.length}</span>` : ic.chev()}</a>
       <div class="shortcuts" style="grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr))">
         <a class="shortcut" href="#form-evento"><span class="icon-tile gold">${ic.plus()}</span>Novo evento</a>
         <a class="shortcut" href="#novo-aviso"><span class="icon-tile gold">${ic.mega(20)}</span>Novo aviso</a>
@@ -837,12 +854,33 @@ async function pgFormEvento(id) {
   const del = document.getElementById('delEv'); if (del) del.onclick = async () => { if (del.dataset.c !== '1') { del.dataset.c = '1'; del.textContent = 'Toque de novo para apagar (inscrições e presenças também serão apagadas)'; return; } const { error } = await sb.from('turmas').delete().eq('id', id); if (error) return toast(erro(error)); toast('Evento apagado.'); ir('gestao'); };
 }
 
+/* ================= SOLICITAÇÕES DE CADASTRO ================= */
+async function pgCadastros() {
+  if (!isGestao()) return ir('inicio');
+  loading('gestao');
+  const [pend, rec] = await Promise.all([
+    q(sb.from('perfis').select('id,nome,email,ra,semestre,criado_em').eq('status', 'pendente').order('criado_em')),
+    q(sb.from('perfis').select('id,nome,email,ra,semestre,decidido_em').eq('status', 'recusado').order('decidido_em', { ascending: false }).limit(30))]);
+  const linha = (x, recusado) => `<div class="card" style="gap:10px"><div style="display:flex;align-items:center;gap:12px"><span class="avatar ${recusado ? 'absent' : ''}">${esc(iniciais(x.nome))}</span><div class="person-main"><b>${esc(x.nome)}</b><small>RA ${esc(x.ra)} · ${semTxt(x.semestre)}</small><small style="overflow-wrap:anywhere">${esc(x.email)}</small></div></div>
+    ${recusado ? `<button class="btn btn-sm btn-outline" data-ok="${x.id}" style="align-self:flex-start">Aprovar mesmo assim</button>` : `<div class="grid2"><button class="btn btn-sm btn-outline" data-no="${x.id}" style="color:var(--bad)">Recusar</button><button class="btn btn-sm btn-navy" data-ok="${x.id}">${ic.check(15, 2.6)} Aprovar</button></div>${x.criado_em ? `<span style="font-size:11.5px;color:var(--muted2)">Cadastrado em ${new Date(x.criado_em).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</span>` : ''}`}</div>`;
+  app.innerHTML = screen(`${hero({ back: 'gestao', eyebrow: 'Gestão', title: 'Solicitações de cadastro', sub: 'Confira nome e RA antes de aprovar. Só quem é aprovado tem acesso ao app.' })}
+    <div class="content pad">
+      ${pend.length > 1 ? `<button class="btn btn-gold btn-block" id="todos">${ic.check(16, 2.6)} Aprovar todos (${pend.length})</button>` : ''}
+      <section class="section"><div class="section-head"><h2>Aguardando</h2><span style="font-size:13px;color:var(--muted2)">${pend.length}</span></div>${pend.length ? pend.map(x => linha(x)).join('') : '<div class="card empty">Nenhuma solicitação pendente.</div>'}</section>
+      ${rec.length ? `<section class="section"><div class="section-head"><h2>Recusados</h2></div>${rec.map(x => linha(x, true)).join('')}</section>` : ''}
+    </div>`, 'gestao');
+  const decidir = async (id, ok, b) => { if (b) b.disabled = true; const { error } = await sb.rpc('decidir_cadastro', { p_perfil: id, p_aprovar: ok }); if (error) { if (b) b.disabled = false; toast(erro(error)); return false; } return true; };
+  app.querySelectorAll('[data-ok]').forEach(b => b.onclick = async () => { if (await decidir(b.dataset.ok, true, b)) { toast('Cadastro aprovado.'); pgCadastros(); } });
+  app.querySelectorAll('[data-no]').forEach(b => b.onclick = async () => { if (b.dataset.c !== '1') { b.dataset.c = '1'; b.textContent = 'Confirmar recusa'; return; } if (await decidir(b.dataset.no, false, b)) { toast('Cadastro recusado.'); pgCadastros(); } });
+  const t = document.getElementById('todos'); if (t) t.onclick = async () => { t.disabled = true; let n = 0; for (const x of pend) if (await decidir(x.id, true)) n++; toast(`${n} cadastro(s) aprovado(s).`); pgCadastros(); };
+}
+
 /* ================= PESSOAS (admin) ================= */
 async function pgPessoas() {
   if (!isAdmin()) return ir('inicio');
   loading('gestao');
   const equipe = await q(sb.from('perfis').select('id,nome,ra,semestre,papel').neq('papel', 'aluno').order('nome'));
-  const ordem = ['admin', 'secretario', 'professor', 'monitor'];
+  const ordem = ['admin', 'vice', 'secretario', 'professor', 'monitor'];
   app.innerHTML = screen(`${hero({ back: 'gestao', eyebrow: 'Administração', title: 'Pessoas e acessos', sub: 'Busque pelo nome ou RA para definir o nível de acesso.' })}
     <div class="content pad">
       <span class="input-wrap" style="background:#fff;box-shadow:var(--shadow-soft)">${ic.search()}<input id="busca" placeholder="Nome ou RA" autocomplete="off"></span>
@@ -865,18 +903,19 @@ async function pgPessoa(id) {
   if (!p) return ir('pessoas');
   const depsProf = dl.filter(d => d.chave !== 'secretaria');
   const st = { papel: p.papel };
-  const desc = { admin: 'Acesso total. Define os níveis de acesso e os departamentos. Máximo de 2.', secretario: 'Cria eventos, aprova inscrições, cadastra datas no calendário, vê a frequência e emite certificados. Publica avisos como Secretaria do Seminário.', professor: 'Vê os eventos atribuídos, abre aulas, faz chamada e acompanha a frequência. Publica avisos pelos departamentos que coordena.', monitor: 'Faz a chamada nos eventos atribuídos a ele.', aluno: 'Acesso padrão de todo cadastro.' };
+  const bloqueado = !isTitular() && ['admin', 'vice'].includes(p.papel);
+  const desc = { admin: 'Acesso total. Define os níveis de acesso e os departamentos. Máximo de 2.', vice: 'Mesmo acesso do administrador, exceto definir ou remover administradores e vice-administradores.', secretario: 'Aprova cadastros, cria eventos, aprova inscrições, vê a frequência e emite certificados. Publica avisos como Secretaria do Seminário.', professor: 'Vê os eventos atribuídos, abre aulas, faz chamada e acompanha a frequência. Publica avisos pelos departamentos que coordena.', monitor: 'Faz a chamada nos eventos atribuídos a ele.', aluno: 'Acesso padrão de todo cadastro.' };
   app.innerHTML = screen(`${topbar('pessoas')}
     <div style="padding:22px 22px 0;display:flex;align-items:center;gap:14px"><span class="avatar" style="width:56px;height:56px;font-size:18px">${esc(iniciais(p.nome))}</span><div style="min-width:0"><h1 style="font-size:22px;font-weight:800;color:var(--navy-800);overflow-wrap:anywhere">${esc(p.nome)}</h1><span style="font-size:13px;color:var(--muted)">RA ${esc(p.ra)} · ${semTxt(p.semestre)} · ${esc(p.email)}</span></div></div>
     <form class="content pad" id="f" style="gap:14px">
       <section class="card"><b style="font-size:14px;color:var(--navy-800)">Nível de acesso</b>
-        ${['admin', 'secretario', 'professor', 'monitor', 'aluno'].map(k => `<label class="radio-card ${st.papel === k ? 'on' : ''}"><input type="radio" name="papel" value="${k}" ${st.papel === k ? 'checked' : ''} ${p.id === S.perfil.id ? 'disabled' : ''}><span><b>${PAPEL[k]}</b><small>${desc[k]}</small></span></label>`).join('')}
-        ${p.id === S.perfil.id ? '<span style="font-size:12px;color:var(--muted2)">Você não pode alterar o seu próprio nível.</span>' : ''}
+        ${['admin', 'vice', 'secretario', 'professor', 'monitor', 'aluno'].map(k => `<label class="radio-card ${st.papel === k ? 'on' : ''}"><input type="radio" name="papel" value="${k}" ${st.papel === k ? 'checked' : ''} ${p.id === S.perfil.id || bloqueado || (!isTitular() && ['admin', 'vice'].includes(k)) ? 'disabled' : ''}><span><b>${PAPEL[k]}</b><small>${desc[k]}</small></span></label>`).join('')}
+        ${p.id === S.perfil.id ? '<span style="font-size:12px;color:var(--muted2)">Você não pode alterar o seu próprio nível.</span>' : bloqueado ? '<span style="font-size:12px;color:var(--muted2)">Apenas o administrador pode alterar o acesso de administradores e vice-administradores.</span>' : ''}
       </section>
       <section class="card" id="depBox" ${st.papel === 'professor' ? '' : 'hidden'}><b style="font-size:14px;color:var(--navy-800)">Departamentos que coordena</b><span style="font-size:12.5px;color:var(--muted)">Os avisos deste professor saem assinados com o nome dele e o departamento escolhido.</span>
         <div>${depsProf.map(d => { const r = resp.find(x => x.departamento_id === d.id); return `<div class="check-row"><input type="checkbox" id="dp_${d.id}" data-dep="${d.id}" ${r ? 'checked' : ''}><label for="dp_${d.id}" style="flex:1;font-size:14px;font-weight:600;cursor:pointer">${esc(d.nome)}</label><span class="input-wrap" style="min-height:38px;padding:0 10px;width:150px;flex:none"><select data-cargo="${d.id}" style="height:36px;font-size:13px">${['Coordenador(a)', 'Diretor(a)', 'Responsável'].map(c => `<option ${r && r.cargo === c ? 'selected' : ''}>${c}</option>`).join('')}</select></span></div>`; }).join('')}</div>
       </section>
-      ${p.id !== S.perfil.id ? '<button class="btn btn-gold btn-block" type="submit">Salvar acesso</button>' : ''}
+      ${p.id !== S.perfil.id && !bloqueado ? '<button class="btn btn-gold btn-block" type="submit">Salvar acesso</button>' : ''}
     </form>`, 'gestao', { light: true });
   const f = document.getElementById('f');
   f.querySelectorAll('input[name=papel]').forEach(r => r.onchange = () => { st.papel = r.value; f.querySelectorAll('.radio-card').forEach(c => c.classList.toggle('on', c.querySelector('input').checked)); document.getElementById('depBox').hidden = st.papel !== 'professor'; });
@@ -926,7 +965,7 @@ function abrirDep(d, resp) {
       res.innerHTML = lista.length ? lista.map(x => `<div class="person-row"><span class="avatar">${esc(iniciais(x.nome))}</span><div class="person-main"><b>${esc(x.nome)}</b><small>${PAPEL[x.papel]}${x.papel === 'aluno' ? ' · RA ' + esc(x.ra) : ''}</small></div><button class="btn btn-sm btn-navy" data-add="${x.id}" data-ra="${esc(x.ra)}" data-papel="${x.papel}">Atribuir</button></div>`).join('') : '<div class="empty" style="padding:12px 0">Ninguém encontrado.</div>';
       res.querySelectorAll('[data-add]').forEach(b => b.onclick = async () => {
         b.disabled = true; const papel = b.dataset.papel;
-        const novo = sec ? (papel === 'admin' ? null : 'secretario') : (['aluno', 'monitor'].includes(papel) ? 'professor' : null);
+        const novo = sec ? (['admin', 'vice'].includes(papel) ? null : 'secretario') : (['aluno', 'monitor'].includes(papel) ? 'professor' : null);
         if (novo && novo !== papel) { const { error } = await sb.rpc('definir_papel', { p_ra: b.dataset.ra, p_papel: novo }); if (error) { b.disabled = false; return toast(erro(error)); } }
         const { error } = await sb.from('departamento_responsaveis').upsert({ departamento_id: d.id, perfil_id: b.dataset.add, cargo: sh.querySelector('#cg').value }, { onConflict: 'departamento_id,perfil_id' });
         if (error) { b.disabled = false; return toast(erro(error)); }
