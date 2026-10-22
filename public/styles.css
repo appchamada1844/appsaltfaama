@@ -327,3 +327,5 @@ p{margin:0}
 .qr-full .top img{width:150px;height:auto}
 .badge-card .foot{height:56px}
 .badge-card .foot img{width:124px}
+.switch.green[aria-checked="true"]{background:linear-gradient(135deg,#34C77B 0%,#1E9E5C 100%)}
+.switch:disabled{opacity:.6}

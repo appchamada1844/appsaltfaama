@@ -35,8 +35,17 @@ const role = () => S.perfil ? S.perfil.papel : null;
 const isAdmin = () => ['admin', 'vice'].includes(role());
 const isTitular = () => role() === 'admin';
 const isGestao = () => ['admin', 'vice', 'secretario'].includes(role());
-const canChamada = () => ['admin', 'vice', 'secretario', 'professor', 'monitor'].includes(role());
-const canAviso = () => ['admin', 'vice', 'secretario', 'professor'].includes(role());
+const pode = k => role() === 'admin' || !!(S.perms && S.perms.has(k));
+const canChamada = () => pode('chamada_todos') || pode('chamada_atribuidos');
+const canAviso = () => pode('publicar_avisos') || pode('avisos_qualquer_dep');
+const temGestao = () => ['aprovar_cadastros', 'gerenciar_eventos', 'aprovar_inscricoes', 'gerenciar_pessoas', 'gerenciar_departamentos'].some(pode);
+const gereEvento = () => pode('gerenciar_eventos') || pode('aprovar_inscricoes') || pode('ver_frequencia');
+const PERMS = [
+  ['Cadastros e pessoas', [['aprovar_cadastros', 'Aprovar cadastros', 'Aceitar ou recusar novas contas no app.'], ['gerenciar_pessoas', 'Pessoas e níveis de acesso', 'Mudar o nível de acesso das contas, exceto administradores e vices.'], ['gerenciar_departamentos', 'Departamentos', 'Criar departamentos e definir seus responsáveis.']]],
+  ['Eventos', [['gerenciar_eventos', 'Criar e editar eventos', 'Inclui montar a equipe de cada evento.'], ['apagar_eventos', 'Apagar eventos', 'Remove o evento junto com inscrições e presenças.'], ['aprovar_inscricoes', 'Aprovar inscrições', 'Aprovar, recusar e remover inscrições nos eventos.'], ['ver_frequencia', 'Frequência e certificados', 'Ver a frequência dos inscritos e baixar certificados.']]],
+  ['Chamada', [['chamada_atribuidos', 'Chamada nos eventos atribuídos', 'Abrir aulas e registrar presença onde foi escalado.'], ['chamada_todos', 'Chamada em qualquer evento', 'Fazer chamada mesmo sem estar na equipe do evento.']]],
+  ['Avisos', [['publicar_avisos', 'Publicar avisos', 'Pelos departamentos aos quais está vinculado.'], ['avisos_qualquer_dep', 'Avisos por qualquer departamento', 'Publicar em nome de qualquer departamento.'], ['apagar_avisos', 'Apagar avisos de outras pessoas', 'Cada pessoa sempre pode apagar os próprios avisos.']]],
+];
 function saudacao() { const h = new Date().getHours(); return h < 12 ? 'Bom dia,' : h < 18 ? 'Boa tarde,' : 'Boa noite,'; }
 function quando(ts) {
   const d = new Date(ts), now = new Date();
@@ -156,6 +165,8 @@ async function carregarPerfil() {
   if (!S.session) { S.perfil = null; return; }
   const { data } = await sb.from('perfis').select('*').eq('id', S.session.user.id).maybeSingle();
   S.perfil = data || null;
+  S.perms = new Set();
+  if (data && !['aluno', 'admin'].includes(data.papel)) { const r = await sb.from('permissoes').select('chave').eq('papel', data.papel).eq('ativo', true); if (!r.error) S.perms = new Set(r.data.map(x => x.chave)); }
 }
 async function deps() { if (!S.deps) S.deps = await q(sb.from('departamentos').select('*').eq('ativo', true).order('nome')); return S.deps; }
 async function contarNaoLidos() {
@@ -351,7 +362,7 @@ async function pgInicio() {
   const short = [];
   if (canChamada()) short.push(`<a class="shortcut" href="#chamada"><span class="icon-tile">${ic.scan()}</span>Fazer chamada</a>`);
   if (canAviso()) short.push(`<a class="shortcut" href="#novo-aviso"><span class="icon-tile gold">${ic.mega(20)}</span>Novo aviso</a>`);
-  if (isGestao()) short.push(`<a class="shortcut" href="#gestao"><span class="icon-tile">${ic.grid(true)}</span>Gestão</a>`);
+  if (temGestao()) short.push(`<a class="shortcut" href="#gestao"><span class="icon-tile">${ic.grid(true)}</span>Gestão</a>`);
 
   const meuCard = t => {
     const m = matDe(t.id);
@@ -405,7 +416,7 @@ async function pgEvento(id) {
   const dep = (dl.find(d => d.id === t.departamento_id) || {}).nome;
   const voltar = tabs().includes('eventos') ? 'eventos' : 'inicio';
   const meta = `<span>${ic.clock('#E0BF73')}${t.carga_horaria} horas</span>${t.inicio ? `<span>${ic.calSm('#E0BF73')}${periodo(t)}</span>` : ''}${t.local ? `<span>${ic.pin('#E0BF73')}${esc(t.local)}</span>` : ''}`;
-  const gerenciar = canChamada() && role() !== 'monitor' ? `<a class="glass-btn" href="#gevento/${t.id}" aria-label="Gerenciar evento" title="Gerenciar">${ic.grid(true)}</a>` : '';
+  const gerenciar = gereEvento() ? `<a class="glass-btn" href="#gevento/${t.id}" aria-label="Gerenciar evento" title="Gerenciar">${ic.grid(true)}</a>` : '';
   if (m && m.status === 'ativa') {
     const pres = new Set((await q(sb.from('presencas').select('aula_id').eq('aluno_id', uid).in('aula_id', aulas.map(a => a.id).concat(['00000000-0000-0000-0000-000000000000'])))).map(x => x.aula_id));
     const f = freq(aulas, pres); const ok = f.pct >= minFreq(t); const pode = apto(t, f);
@@ -465,10 +476,10 @@ async function pgAviso(id) {
   const a = await q(sb.from('avisos').select('*').eq('id', id).maybeSingle());
   if (!a) { app.innerHTML = screen(`<div class="content pad"><div class="card empty">Aviso não encontrado.</div><a class="btn btn-outline" href="#avisos">Voltar</a></div>`, 'avisos'); return; }
   sb.rpc('marcar_lido', { p_aviso: id }).then(() => contarNaoLidos());
-  const pode = isAdmin() || a.autor_id === S.perfil.id;
+  const podeApagar = pode('apagar_avisos') || a.autor_id === S.perfil.id;
   const dt = new Date(a.publicar_em);
   const publico = { todos: 'todos os alunos', evento: 'os inscritos de um evento', semestre: `o ${a.semestre}º semestre`, monitores: 'a equipe' }[a.publico];
-  app.innerHTML = screen(`${topbar('avisos', '<b style="font-size:13px;letter-spacing:.04em;color:var(--navy-800)">Aviso</b>', pode ? `<button class="light-btn" id="del" aria-label="Apagar aviso" style="color:var(--bad)">${ic.trash()}</button>` : '<span style="width:44px"></span>')}
+  app.innerHTML = screen(`${topbar('avisos', '<b style="font-size:13px;letter-spacing:.04em;color:var(--navy-800)">Aviso</b>', podeApagar ? `<button class="light-btn" id="del" aria-label="Apagar aviso" style="color:var(--bad)">${ic.trash()}</button>` : '<span style="width:44px"></span>')}
     <article class="article">
       <span class="dept-chip">${ic.mega(15)} ${esc(a.departamento_nome || 'SALT-FAAMA')}</span>
       <h1>${esc(a.titulo)}</h1>
@@ -487,7 +498,7 @@ async function pgNovoAviso() {
   loading('avisos');
   const dl = await deps();
   let meusDeps;
-  if (isAdmin()) meusDeps = dl;
+  if (pode('avisos_qualquer_dep')) meusDeps = dl;
   else { const r = await q(sb.from('departamento_responsaveis').select('departamento_id,cargo').eq('perfil_id', S.perfil.id)); meusDeps = dl.filter(d => r.some(x => x.departamento_id === d.id)); }
   const turmas = await q(sb.from('turmas').select('id,nome,fim').order('inicio', { ascending: false, nullsFirst: false }));
   const st = { publico: 'todos', notificar: true, agendar: false };
@@ -567,13 +578,13 @@ async function pgCalendario() {
     const dots = [...new Set(evs.map(cat))].map(c => `<i class="${CAT[c][1]}"></i>`).join('');
     cells += `<button class="${cls}" style="${style}" data-dia="${dia}" aria-label="${d} de ${MESES[mo]}${evs.length ? ', ' + evs.length + ' evento(s)' : ''}"><span class="n">${d}</span><span class="dots">${dots}</span></button>`;
   }
-  const destino = e => isGestao() ? 'gevento/' + e.id : 'evento/' + e.id;
+  const destino = e => gereEvento() ? 'gevento/' + e.id : 'evento/' + e.id;
   const item = (e, dia) => { const [lbl, , , tile] = CAT[cat(e)]; const d = parseD(e.inicio), f = parseD(fimDe(e)); const outroMes = f.getMonth() !== d.getMonth() || f.getFullYear() !== d.getFullYear(); const multi = fimDe(e) !== e.inicio && !outroMes;
     const tileHtml = `<div class="date-tile ${tile}"><b class="${multi ? 'sm' : ''}">${multi ? `${String(d.getDate()).padStart(2, '0')}–${String(f.getDate()).padStart(2, '0')}` : String(d.getDate()).padStart(2, '0')}</b><small>${MES3[d.getMonth()]}</small></div>`;
     const marco = (dia && longo(e) ? (dia === e.inicio ? 'Início · ' : 'Término · ') : '') + (outroMes ? `até ${brCurto(fimDe(e))} · ` : '');
     return `<a class="row-card" href="#${destino(e)}">${tileHtml}<div class="row-main"><span class="row-title">${esc(e.nome)}</span><span class="row-sub">${esc(marco + ([dn(e.departamento_id), e.local].filter(Boolean).join(' · ') || lbl))}</span></div><span class="pill ${tile === 'red' ? 'bad' : tile}">${lbl}</span></a>`; };
   const selList = S.calSel ? evDia(S.calSel) : null;
-  app.innerHTML = screen(`${hero({ ov: 'ov', logo: true, right: isGestao() ? `<a class="btn btn-gold btn-sm" href="#form-evento">${ic.plus()} Novo evento</a>` : '',
+  app.innerHTML = screen(`${hero({ ov: 'ov', logo: true, right: pode('gerenciar_eventos') ? `<a class="btn btn-gold btn-sm" href="#form-evento">${ic.plus()} Novo evento</a>` : '',
       extra: `<div style="display:flex;align-items:flex-end;justify-content:space-between;position:relative"><div class="hero-title"><span class="eyebrow">Calendário do SALT</span><h1>${MESES[mo][0].toUpperCase() + MESES[mo].slice(1)} <span style="font-weight:600;color:#B7C6D8">${y}</span></h1></div><div style="display:flex;gap:8px"><button class="glass-btn" id="prev" aria-label="Mês anterior">${ic.back()}</button><button class="glass-btn" id="next" aria-label="Próximo mês" style="transform:scaleX(-1)">${ic.back()}</button></div></div>` })}
     <div class="content ov">
       <section class="card lift cal"><div class="cal-head"><span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span></div><div class="cal-grid">${cells}</div>
@@ -591,7 +602,7 @@ async function pgCalendario() {
 let stream = null, rafId = null, ultimo = { token: '', t: 0 }, ocupado = false;
 function pararCamera() { if (rafId) cancelAnimationFrame(rafId); rafId = null; if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; const s = document.querySelector('.scan-screen'); if (s) s.remove(); }
 async function eventosDaEquipe() {
-  if (isGestao()) return q(sb.from('turmas').select('*').order('inicio', { ascending: false, nullsFirst: false }));
+  if (pode('chamada_todos')) return q(sb.from('turmas').select('*').order('inicio', { ascending: false, nullsFirst: false }));
   const eq = await q(sb.from('evento_equipe').select('turma_id').eq('perfil_id', S.perfil.id));
   if (!eq.length) return [];
   return q(sb.from('turmas').select('*').in('id', eq.map(x => x.turma_id)).order('inicio', { ascending: false, nullsFirst: false }));
@@ -615,7 +626,7 @@ async function pgChamada(id) {
         <a class="btn btn-white btn-block" href="#chamada/${destaque.id}" style="position:relative">${ic.scan()} Iniciar chamada</a></section>` : ''}
       <section class="section">${outros.length ? `<div class="section-head"><h2>${destaque ? 'Outros eventos' : 'Seus eventos'}</h2></div>` : ''}
         ${outros.map(t => `<a class="row-card" href="#chamada/${t.id}">${dateTile(t.inicio, 'soft')}<div class="row-main"><span class="row-title">${esc(t.nome)}</span><span class="row-sub">${esc(dn(t.departamento_id) || periodo(t))}</span>${temHoje(t.id) ? '<span class="status ok">Aula aberta hoje</span>' : ''}</div>${ic.chev()}</a>`).join('')}
-        ${!turmas.length ? `<div class="card empty">${isGestao() ? 'Nenhum evento criado ainda. Crie um em Gestão.' : 'Nenhum evento atribuído a você ainda. A coordenação faz essa atribuição.'}</div>` : `<p style="font-size:12px;color:var(--muted2);padding:0 4px">${isGestao() ? 'Como gestão, você vê todos os eventos.' : 'Aparecem aqui apenas os eventos atribuídos a você pela coordenação.'}</p>`}
+        ${!turmas.length ? `<div class="card empty">${pode('chamada_todos') ? 'Nenhum evento criado ainda.' : 'Nenhum evento atribuído a você ainda. A coordenação faz essa atribuição.'}</div>` : `<p style="font-size:12px;color:var(--muted2);padding:0 4px">${pode('chamada_todos') ? 'Você pode fazer chamada em todos os eventos.' : 'Aparecem aqui apenas os eventos atribuídos a você pela coordenação.'}</p>`}
       </section></div>`, tab);
 }
 async function pgChamadaEvento(id, tab) {
@@ -737,7 +748,7 @@ async function abrirScanner(t, aula, alunos, presentes, aoFechar) {
 
 /* ================= GESTÃO ================= */
 async function pgGestao() {
-  if (!isGestao()) return ir('inicio');
+  if (!temGestao()) return ir('inicio');
   loading('gestao');
   const [turmas, pend, dl, cad] = await Promise.all([q(sb.from('turmas').select('*').order('inicio', { ascending: false, nullsFirst: false })), q(sb.from('matriculas').select('turma_id').eq('status', 'pendente')), deps(), q(sb.from('perfis').select('id').eq('status', 'pendente'))]);
   const nPend = {}; pend.forEach(p => nPend[p.turma_id] = (nPend[p.turma_id] || 0) + 1);
@@ -746,19 +757,20 @@ async function pgGestao() {
   const linha = t => `<a class="row-card" href="#gevento/${t.id}">${dateTile(t.inicio, encerrado(t) ? 'soft' : '')}<div class="row-main"><span class="row-title">${esc(t.nome)}</span><span class="row-sub">${esc(dn(t.departamento_id))}</span>${nPend[t.id] ? `<span class="status gold">${nPend[t.id]} inscrição(ões) aguardando aprovação</span>` : `<span class="status ${t.inscricoes_abertas && !encerrado(t) ? 'ok' : 'muted'}">${encerrado(t) ? 'Encerrado' : t.inscricoes_abertas ? 'Inscrições abertas' : 'Inscrições fechadas'}</span>`}</div>${ic.chev()}</a>`;
   app.innerHTML = screen(`${hero({ logo: true, right: `<span class="role-chip">${ic.shield()} ${PAPEL[role()]}</span>`, extra: `<div class="hero-title"><span class="eyebrow">${role() === 'vice' ? 'Vice-administração' : isAdmin() ? 'Administração' : 'Secretaria do Seminário'}</span><h1>Gestão</h1></div>` })}
     <div class="content pad">
-      <a class="row-card ${cad.length ? 'unread' : ''}" href="#cadastros"><span class="icon-tile ${cad.length ? 'gold' : ''}">${ic.users()}</span><div class="row-main"><span class="row-title">Solicitações de cadastro</span><span class="row-sub">${cad.length ? `${cad.length} aguardando aprovação` : 'Nenhuma pendente'}</span></div>${cad.length ? `<span class="pill gold">${cad.length}</span>` : ic.chev()}</a>
+      ${pode('aprovar_cadastros') ? '' : '<!--'}<a class="row-card ${cad.length ? 'unread' : ''}" href="#cadastros"><span class="icon-tile ${cad.length ? 'gold' : ''}">${ic.users()}</span><div class="row-main"><span class="row-title">Solicitações de cadastro</span><span class="row-sub">${cad.length ? `${cad.length} aguardando aprovação` : 'Nenhuma pendente'}</span></div>${cad.length ? `<span class="pill gold">${cad.length}</span>` : ic.chev()}</a>${pode('aprovar_cadastros') ? '' : '-->'}
       <div class="shortcuts" style="grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr))">
-        <a class="shortcut" href="#form-evento"><span class="icon-tile gold">${ic.plus()}</span>Novo evento</a>
-        <a class="shortcut" href="#novo-aviso"><span class="icon-tile gold">${ic.mega(20)}</span>Novo aviso</a>
-        <a class="shortcut" href="#chamada"><span class="icon-tile">${ic.scan()}</span>Fazer chamada</a>
-        ${isAdmin() ? `<a class="shortcut" href="#pessoas"><span class="icon-tile">${ic.users()}</span>Pessoas e acessos</a><a class="shortcut" href="#departamentos"><span class="icon-tile">${ic.dept()}</span>Departamentos</a>` : ''}
+        ${pode('gerenciar_eventos') ? `<a class="shortcut" href="#form-evento"><span class="icon-tile gold">${ic.plus()}</span>Novo evento</a>` : ''}
+        ${canAviso() ? `<a class="shortcut" href="#novo-aviso"><span class="icon-tile gold">${ic.mega(20)}</span>Novo aviso</a>` : ''}
+        ${canChamada() ? `<a class="shortcut" href="#chamada"><span class="icon-tile">${ic.scan()}</span>Fazer chamada</a>` : ''}
+        ${pode('gerenciar_pessoas') || isTitular() ? `<a class="shortcut" href="#pessoas"><span class="icon-tile">${ic.users()}</span>Pessoas e acessos</a>` : ''}
+        ${pode('gerenciar_departamentos') ? `<a class="shortcut" href="#departamentos"><span class="icon-tile">${ic.dept()}</span>Departamentos</a>` : ''}
       </div>
       <section class="section"><div class="section-head"><h2>Eventos ativos</h2><span style="font-size:13px;color:var(--muted2)">${ativos.length}</span></div>${ativos.length ? ativos.map(linha).join('') : '<div class="card empty">Nenhum evento ativo. Use "Novo evento".</div>'}</section>
       ${antigos.length ? `<section class="section"><div class="section-head"><h2>Encerrados</h2></div>${antigos.map(linha).join('')}</section>` : ''}
     </div>`, 'gestao');
 }
 async function pgGEvento(id) {
-  if (!canChamada() || role() === 'monitor') return ir('inicio');
+  if (!gereEvento()) return ir('inicio');
   const tab = tabs().includes('gestao') ? 'gestao' : 'chamada';
   loading(tab);
   const t = await q(sb.from('turmas').select('*').eq('id', id).maybeSingle());
@@ -773,20 +785,20 @@ async function pgGEvento(id) {
   const nome = (a, b) => a.perfis.nome.localeCompare(b.perfis.nome, 'pt-BR');
   const pend = mats.filter(m => m.status === 'pendente').sort(nome), ativos = mats.filter(m => m.status === 'ativa').sort(nome), recus = mats.filter(m => m.status === 'recusada').sort(nome);
   const fq = aid => freq(aulas, new Set(pres.filter(p => p.aluno_id === aid).map(p => p.aula_id)));
-  const g = isGestao();
-  const voltar = g ? 'gestao' : 'chamada';
-  app.innerHTML = screen(`${hero({ back: voltar, ov: 'ov', right: g ? `<a class="glass-btn" href="#form-evento/${t.id}" aria-label="Editar evento">${ic.edit()}</a>` : '', eyebrow: dep ? esc(dep) : 'Evento', title: t.nome,
+  const gE = pode('gerenciar_eventos'), gI = pode('aprovar_inscricoes'), gF = pode('ver_frequencia');
+  const voltar = tabs().includes('gestao') ? 'gestao' : 'chamada';
+  app.innerHTML = screen(`${hero({ back: voltar, ov: 'ov', right: gE ? `<a class="glass-btn" href="#form-evento/${t.id}" aria-label="Editar evento">${ic.edit()}</a>` : '', eyebrow: dep ? esc(dep) : 'Evento', title: t.nome,
       meta: `<span>${ic.clock('#E0BF73')}${t.carga_horaria} h</span>${t.inicio ? `<span>${ic.calSm('#E0BF73')}${periodo(t)}</span>` : ''}<span>${ic.users('#E0BF73')}${ativos.length} inscrito(s)</span><span>${aulas.length} aula(s)</span>` })}
     <div class="content ov" style="gap:16px">
       <div class="grid2"><a class="btn btn-white" href="#chamada/${t.id}" style="box-shadow:var(--shadow-lift)">${ic.scan()} Chamada</a><a class="btn btn-white" href="#evento/${t.id}" style="box-shadow:var(--shadow-lift)">Página do evento</a></div>
-      ${pend.length && g ? `<section class="card" style="gap:0;padding:6px 16px"><div class="section-head" style="padding:10px 0 4px"><h2 style="font-size:16px">Aguardando aprovação · ${pend.length}</h2></div>${pend.map(m => `<div class="person-row"><span class="avatar absent">${esc(iniciais(m.perfis.nome))}</span><div class="person-main"><b>${esc(m.perfis.nome)}</b><small>RA ${esc(m.perfis.ra)} · ${semTxt(m.perfis.semestre)}</small></div><div style="display:flex;gap:6px"><button class="btn btn-sm btn-navy" data-ap="${m.id}">Aprovar</button><button class="btn btn-sm btn-danger" data-rc="${m.id}" aria-label="Recusar">${ic.x(12, 3)}</button></div></div>`).join('')}</section>` : ''}
+      ${pend.length && gI ? `<section class="card" style="gap:0;padding:6px 16px"><div class="section-head" style="padding:10px 0 4px"><h2 style="font-size:16px">Aguardando aprovação · ${pend.length}</h2></div>${pend.map(m => `<div class="person-row"><span class="avatar absent">${esc(iniciais(m.perfis.nome))}</span><div class="person-main"><b>${esc(m.perfis.nome)}</b><small>RA ${esc(m.perfis.ra)} · ${semTxt(m.perfis.semestre)}</small></div><div style="display:flex;gap:6px"><button class="btn btn-sm btn-navy" data-ap="${m.id}">Aprovar</button><button class="btn btn-sm btn-danger" data-rc="${m.id}" aria-label="Recusar">${ic.x(12, 3)}</button></div></div>`).join('')}</section>` : ''}
       <section class="card" style="gap:0;padding:6px 16px"><div class="section-head" style="padding:10px 0 4px"><h2 style="font-size:16px">Inscritos e frequência</h2><span style="font-size:12px;color:var(--muted2)">mínimo ${minFreq(t)}%</span></div>
-        ${ativos.length ? ativos.map(m => { const f = fq(m.aluno_id); const ok = f.n > 0 && f.pct >= minFreq(t); const pode = g && apto(t, f);
-          return `<div class="person-row"><span class="avatar">${esc(iniciais(m.perfis.nome))}</span><div class="person-main"><b>${esc(m.perfis.nome)}</b><small>RA ${esc(m.perfis.ra)} · ${f.p} de ${f.n} aulas</small></div><span class="pill ${f.n ? (ok ? 'ok' : 'bad') : 'navy'}">${f.pct}%</span>${pode ? `<button class="light-btn" data-cert="${m.aluno_id}" aria-label="Baixar certificado" style="width:38px;height:38px;box-shadow:none;background:var(--gold-soft);color:var(--gold-deep)">${ic.seal()}</button>` : ''}${isAdmin() ? `<button class="light-btn" data-rem="${m.id}" aria-label="Remover inscrição" style="width:38px;height:38px;box-shadow:none;background:#F3F5F9;color:var(--muted2)">${ic.trash()}</button>` : ''}</div>`; }).join('') : '<div class="empty">Nenhum inscrito ainda.</div>'}
-        ${g && t.fim && t.fim > hoje() && ativos.length ? `<p style="font-size:12px;color:var(--muted2);padding:6px 0 10px">Os certificados ficam disponíveis após o término, em ${br(t.fim)}.</p>` : ''}</section>
-      <section class="card" style="gap:0;padding:6px 16px"><div class="section-head" style="padding:10px 0 4px"><h2 style="font-size:16px">Equipe do evento</h2>${g ? '<button class="link-gold" id="addEq">+ Adicionar</button>' : ''}</div>
-        ${equipe.length ? equipe.map(e => `<div class="person-row"><span class="avatar">${esc(iniciais(e.perfis.nome))}</span><div class="person-main"><b>${esc(e.perfis.nome)}</b><small>${e.funcao === 'professor' ? 'Professor(a)' : 'Monitor(a)'} · RA ${esc(e.perfis.ra)}</small></div>${g ? `<button class="light-btn" data-req="${e.perfil_id}" aria-label="Remover da equipe" style="width:38px;height:38px;box-shadow:none;background:#F3F5F9;color:var(--muted2)">${ic.x(12, 3)}</button>` : ''}</div>`).join('') : `<div class="empty">${g ? 'Adicione professores e monitores que farão a chamada neste evento.' : 'Nenhuma equipe atribuída.'}</div>`}</section>
-      ${recus.length && g ? `<section class="card" style="gap:0;padding:6px 16px"><div class="section-head" style="padding:10px 0 4px"><h2 style="font-size:16px">Recusados</h2></div>${recus.map(m => `<div class="person-row"><span class="avatar absent">${esc(iniciais(m.perfis.nome))}</span><div class="person-main"><b>${esc(m.perfis.nome)}</b><small>RA ${esc(m.perfis.ra)}</small></div><button class="btn btn-sm btn-outline" data-ap="${m.id}">Aprovar</button></div>`).join('')}</section>` : ''}
+        ${ativos.length ? ativos.map(m => { const f = fq(m.aluno_id); const ok = f.n > 0 && f.pct >= minFreq(t); const podeCert = gF && apto(t, f);
+          return `<div class="person-row"><span class="avatar">${esc(iniciais(m.perfis.nome))}</span><div class="person-main"><b>${esc(m.perfis.nome)}</b><small>RA ${esc(m.perfis.ra)} · ${f.p} de ${f.n} aulas</small></div><span class="pill ${f.n ? (ok ? 'ok' : 'bad') : 'navy'}">${f.pct}%</span>${podeCert ? `<button class="light-btn" data-cert="${m.aluno_id}" aria-label="Baixar certificado" style="width:38px;height:38px;box-shadow:none;background:var(--gold-soft);color:var(--gold-deep)">${ic.seal()}</button>` : ''}${gI ? `<button class="light-btn" data-rem="${m.id}" aria-label="Remover inscrição" style="width:38px;height:38px;box-shadow:none;background:#F3F5F9;color:var(--muted2)">${ic.trash()}</button>` : ''}</div>`; }).join('') : '<div class="empty">Nenhum inscrito ainda.</div>'}
+        ${gF && t.fim && t.fim > hoje() && ativos.length ? `<p style="font-size:12px;color:var(--muted2);padding:6px 0 10px">Os certificados ficam disponíveis após o término, em ${br(t.fim)}.</p>` : ''}</section>
+      <section class="card" style="gap:0;padding:6px 16px"><div class="section-head" style="padding:10px 0 4px"><h2 style="font-size:16px">Equipe do evento</h2>${gE ? '<button class="link-gold" id="addEq">+ Adicionar</button>' : ''}</div>
+        ${equipe.length ? equipe.map(e => `<div class="person-row"><span class="avatar">${esc(iniciais(e.perfis.nome))}</span><div class="person-main"><b>${esc(e.perfis.nome)}</b><small>${e.funcao === 'professor' ? 'Professor(a)' : 'Monitor(a)'} · RA ${esc(e.perfis.ra)}</small></div>${gE ? `<button class="light-btn" data-req="${e.perfil_id}" aria-label="Remover da equipe" style="width:38px;height:38px;box-shadow:none;background:#F3F5F9;color:var(--muted2)">${ic.x(12, 3)}</button>` : ''}</div>`).join('') : `<div class="empty">${gE ? 'Adicione professores e monitores que farão a chamada neste evento.' : 'Nenhuma equipe atribuída.'}</div>`}</section>
+      ${recus.length && gI ? `<section class="card" style="gap:0;padding:6px 16px"><div class="section-head" style="padding:10px 0 4px"><h2 style="font-size:16px">Recusados</h2></div>${recus.map(m => `<div class="person-row"><span class="avatar absent">${esc(iniciais(m.perfis.nome))}</span><div class="person-main"><b>${esc(m.perfis.nome)}</b><small>RA ${esc(m.perfis.ra)}</small></div><button class="btn btn-sm btn-outline" data-ap="${m.id}">Aprovar</button></div>`).join('')}</section>` : ''}
     </div>`, tab);
   const upd = async (mid, status) => { const { error } = await sb.from('matriculas').update({ status }).eq('id', mid); if (error) return toast(erro(error)); toast(status === 'ativa' ? 'Inscrição aprovada.' : 'Inscrição recusada.'); pgGEvento(id); };
   app.querySelectorAll('[data-ap]').forEach(b => b.onclick = () => upd(b.dataset.ap, 'ativa'));
@@ -806,7 +818,7 @@ async function pgGEvento(id) {
 }
 function sigRow(s = { nome: '', funcao: '' }) { return `<div class="sig"><div class="sig-head"><span>Assinatura</span><button type="button" class="link-gold" data-rmsig style="color:var(--bad);font-size:12px;letter-spacing:0;text-transform:none">Remover</button></div><label class="field">Nome<span class="input-wrap" style="background:#fff"><input name="sigNome" value="${esc(s.nome)}" placeholder="Ex.: Pr. João Silva"></span></label><label class="field">Função<span class="input-wrap" style="background:#fff"><input name="sigFuncao" value="${esc(s.funcao)}" placeholder="Ex.: Diretor do SALT"></span></label></div>`; }
 async function pgFormEvento(id) {
-  if (!isGestao()) return ir('inicio');
+  if (!pode('gerenciar_eventos')) return ir('inicio');
   loading('gestao');
   const dl = await deps();
   let t = { nome: '', descricao: '', carga_horaria: '', inicio: '', fim: '', local: '', requer_aprovacao: false, inscricoes_abertas: true, frequencia_minima: 75, departamento_id: '', assinaturas: [{ nome: '', funcao: 'Coordenação' }, { nome: '', funcao: 'Direção do SALT' }] };
@@ -831,7 +843,7 @@ async function pgFormEvento(id) {
       <section class="card"><b style="font-size:14px;color:var(--navy-800)">Assinaturas do certificado</b><div id="sigs" style="display:flex;flex-direction:column;gap:10px">${(t.assinaturas || []).map(sigRow).join('')}</div>
         <button type="button" class="link-gold" id="addSig" style="align-self:flex-start">${ic.plus()} Adicionar assinatura</button><span style="font-size:12px;color:var(--muted2)">Até ${MAXSIG} pessoas, cada uma com nome e função.</span></section>
       <button class="btn btn-gold btn-block" type="submit">${id ? 'Salvar alterações' : 'Criar evento'}</button>
-      ${id && isAdmin() ? `<button type="button" class="btn btn-danger btn-block" id="delEv">${ic.trash()} Apagar evento</button>` : ''}
+      ${id && pode('apagar_eventos') ? `<button type="button" class="btn btn-danger btn-block" id="delEv">${ic.trash()} Apagar evento</button>` : ''}
     </form>`, 'gestao', { light: true });
   const f = document.getElementById('f'), box = document.getElementById('sigs');
   f.querySelectorAll('input[name=aprov]').forEach(r => r.onchange = () => { st.aprov = r.value === '1'; f.querySelectorAll('.radio-card').forEach(c => c.classList.toggle('on', c.querySelector('input').checked)); });
@@ -856,7 +868,7 @@ async function pgFormEvento(id) {
 
 /* ================= SOLICITAÇÕES DE CADASTRO ================= */
 async function pgCadastros() {
-  if (!isGestao()) return ir('inicio');
+  if (!pode('aprovar_cadastros')) return ir('inicio');
   loading('gestao');
   const [pend, rec] = await Promise.all([
     q(sb.from('perfis').select('id,nome,email,ra,semestre,criado_em').eq('status', 'pendente').order('criado_em')),
@@ -877,7 +889,7 @@ async function pgCadastros() {
 
 /* ================= PESSOAS (admin) ================= */
 async function pgPessoas() {
-  if (!isAdmin()) return ir('inicio');
+  if (!pode('gerenciar_pessoas') && !isTitular()) return ir('inicio');
   loading('gestao');
   const equipe = await q(sb.from('perfis').select('id,nome,ra,semestre,papel').neq('papel', 'aluno').order('nome'));
   const ordem = ['admin', 'vice', 'secretario', 'professor', 'monitor'];
@@ -885,9 +897,11 @@ async function pgPessoas() {
     <div class="content pad">
       <span class="input-wrap" style="background:#fff;box-shadow:var(--shadow-soft)">${ic.search()}<input id="busca" placeholder="Nome ou RA" autocomplete="off"></span>
       <div id="res"></div>
+      ${isTitular() ? '<section class="section" id="perms"></section>' : ''}
       <section class="section" id="eq"><div class="section-head"><h2>Equipe atual</h2><span style="font-size:13px;color:var(--muted2)">${equipe.length}</span></div>
         ${ordem.map(p => { const l = equipe.filter(x => x.papel === p); return l.length ? `<div class="card" style="gap:0;padding:4px 16px"><span class="group-label" style="padding:12px 0 4px">${PAPEL[p]}${p === 'admin' ? ` · ${l.length}/2` : ''}</span>${l.map(x => linhaPessoa(x)).join('')}</div>` : ''; }).join('') || '<div class="card empty">Ainda não há equipe definida.</div>'}
       </section></div>`, 'gestao');
+  if (isTitular()) secaoPermissoes();
   let tm; document.getElementById('busca').oninput = e => { clearTimeout(tm); tm = setTimeout(async () => {
     const v = e.target.value.trim().replace(/[,%()*\\]/g, ''); const res = document.getElementById('res');
     if (v.length < 2) { res.innerHTML = ''; return; }
@@ -895,9 +909,29 @@ async function pgPessoas() {
     res.innerHTML = r.error ? `<div class="banner err">${esc(erro(r.error))}</div>` : `<div class="card" style="gap:0;padding:4px 16px">${r.data.length ? r.data.map(x => linhaPessoa(x)).join('') : '<div class="empty">Ninguém encontrado.</div>'}</div>`;
   }, 300); };
 }
+async function secaoPermissoes() {
+  const box = document.getElementById('perms'); if (!box) return;
+  const r = await sb.from('permissoes').select('papel,chave,ativo');
+  if (r.error) { box.innerHTML = `<div class="banner err">${esc(erro(r.error))}</div>`; return; }
+  const mapa = {}; r.data.forEach(x => mapa[x.papel + ':' + x.chave] = x.ativo);
+  const PAP = [['vice', 'Vice-adm'], ['secretario', 'Secretário'], ['professor', 'Professor'], ['monitor', 'Monitor']];
+  const sel = S.permPapel || 'secretario';
+  box.innerHTML = `<div class="section-head"><h2>Permissões por tipo de conta</h2></div>
+    <p style="font-size:12.5px;color:var(--muted);padding:0 4px;margin-top:-6px">Ligue ou desligue o que cada tipo de conta pode fazer. Vale na hora para todas as contas daquele tipo. O administrador sempre tem acesso total.</p>
+    <div class="seg" style="grid-auto-columns:minmax(0,1fr)">${PAP.map(([k, l]) => `<button class="${k === sel ? 'on' : ''}" data-pp="${k}" style="font-size:12.5px">${l}</button>`).join('')}</div>
+    ${PERMS.map(([grupo, itens]) => `<div class="card" style="gap:0;padding:4px 16px"><span class="group-label" style="padding:12px 0 2px">${grupo}</span>${itens.map(([k, t, d], i) => `<div class="switch-row" style="padding:12px 0;${i ? 'border-top:1px solid #EEF1F5' : ''}"><div style="min-width:0"><b>${t}</b><small>${d}</small></div><button type="button" class="switch green" role="switch" aria-checked="${!!mapa[sel + ':' + k]}" aria-label="${t}" data-pk="${k}"></button></div>`).join('')}</div>`).join('')}`;
+  box.querySelectorAll('[data-pp]').forEach(b => b.onclick = () => { S.permPapel = b.dataset.pp; secaoPermissoes(); });
+  box.querySelectorAll('[data-pk]').forEach(b => b.onclick = async () => {
+    const novo = b.getAttribute('aria-checked') !== 'true'; b.setAttribute('aria-checked', String(novo)); b.disabled = true;
+    const u = await sb.from('permissoes').update({ ativo: novo, atualizado_em: new Date().toISOString() }).eq('papel', sel).eq('chave', b.dataset.pk).select();
+    b.disabled = false;
+    if (u.error || !u.data.length) { b.setAttribute('aria-checked', String(!novo)); return toast(u.error ? erro(u.error) : 'Não foi possível salvar.'); }
+    toast(novo ? 'Permissão ligada.' : 'Permissão desligada.');
+  });
+}
 const linhaPessoa = x => `<a class="person-row" href="#pessoa/${x.id}" style="text-decoration:none;color:inherit"><span class="avatar">${esc(iniciais(x.nome))}</span><div class="person-main"><b>${esc(x.nome)}</b><small>RA ${esc(x.ra)} · ${x.semestre}º sem.</small></div><span class="pill ${x.papel === 'aluno' ? 'navy' : 'gold'}">${PAPEL[x.papel]}</span>${ic.chev()}</a>`;
 async function pgPessoa(id) {
-  if (!isAdmin()) return ir('inicio');
+  if (!pode('gerenciar_pessoas')) return ir('inicio');
   loading('gestao');
   const [p, resp, dl] = await Promise.all([q(sb.from('perfis').select('*').eq('id', id).maybeSingle()), q(sb.from('departamento_responsaveis').select('*').eq('perfil_id', id)), deps()]);
   if (!p) return ir('pessoas');
@@ -934,7 +968,7 @@ async function pgPessoa(id) {
   };
 }
 async function pgDepartamentos() {
-  if (!isAdmin()) return ir('inicio');
+  if (!pode('gerenciar_departamentos')) return ir('inicio');
   loading('gestao');
   const [dl, resp] = await Promise.all([q(sb.from('departamentos').select('*').order('nome')), q(sb.from('departamento_responsaveis').select('departamento_id,perfil_id,cargo,perfis(nome,papel)'))]);
   app.innerHTML = screen(`${hero({ back: 'gestao', eyebrow: 'Administração', title: 'Departamentos', sub: 'Toque em um departamento para definir quem responde por ele.' })}
