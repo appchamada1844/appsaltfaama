@@ -346,7 +346,7 @@ async function pgInicio() {
   };
   app.innerHTML = screen(`
     ${hero({ logo: true, ov: 'ov-xl', right: `<div style="display:flex;gap:10px"><a class="glass-btn round" href="#avisos" aria-label="Avisos">${ic.bell(true)}${S.unread ? `<span class="badge">${S.unread > 9 ? '9+' : S.unread}</span>` : ''}</a><a class="avatar-btn" href="#conta" aria-label="Minha conta"><span>${esc(iniciais(p.nome))}</span></a></div>`,
-      extra: `<div class="hero-title"><span class="sub">${saudacao()}</span><h1>${esc(nomeCurto(p.nome))}</h1>${role() !== 'aluno' ? `<span class="role-chip" style="align-self:flex-start;margin-top:6px">${ic.shield()} ${PAPEL[role()]}</span>` : ''}</div>` })}
+      extra: `<div class="hero-title"><span class="sub">${saudacao()}</span><h1>${esc(nomeCurto(p.nome))}</h1><span class="role-chip" style="align-self:flex-start;margin-top:6px">${role() === 'aluno' ? ic.cap() : ic.shield()} ${PAPEL[role()]}</span></div>` })}
     <div class="content ov-xl">
       <button class="credential" id="cred">${CARD_MOTIF}
         <div class="info"><div style="display:flex;flex-direction:column;gap:6px"><span class="label">${ic.scan()} MEU QR CODE</span><span class="name">${esc(p.nome)}</span><span class="ra">${idLinha(p)}</span></div>
