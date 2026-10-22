@@ -24,6 +24,9 @@ const brCurto = s => s ? s.split('-').slice(1).reverse().join('/') : '';
 const extenso = s => { const d = parseD(s); return `${d.getDate()} de ${MESES[d.getMonth()]} de ${d.getFullYear()}`; };
 const periodo = t => t.inicio ? (t.fim ? `${brCurto(t.inicio)} a ${brCurto(t.fim)}` : `a partir de ${brCurto(t.inicio)}`) : '';
 const semTxt = n => `${n}º semestre`;
+const NSEM = 8;
+const ehAluno = p => (p || S.perfil || {}).papel === 'aluno';
+const idLinha = p => ehAluno(p) ? `RA ${esc(p.ra)} · ${semTxt(p.semestre)}` : PAPEL[p.papel];
 const iniciais = nome => (nome || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase();
 const primeiroNome = nome => { const t = (nome || '').trim().split(/\s+/); return /\.$/.test(t[0] || '') && t[1] ? t[0] + ' ' + t[1] : (t[0] || ''); };
 const nomeCurto = nome => { const t = (nome || '').trim().split(/\s+/); let i = /\.$/.test(t[0] || '') ? 2 : 1; const out = t.slice(0, i); if (t[i]) { out.push(t[i]); if (/^(d[aeo]s?|e)$/i.test(t[i]) && t[i + 1]) out.push(t[i + 1]); } return out.join(' '); };
@@ -33,7 +36,6 @@ const isAdmin = () => role() === 'admin';
 const isGestao = () => ['admin', 'secretario'].includes(role());
 const canChamada = () => ['admin', 'secretario', 'professor', 'monitor'].includes(role());
 const canAviso = () => ['admin', 'secretario', 'professor'].includes(role());
-const canCalEdit = () => isGestao();
 function saudacao() { const h = new Date().getHours(); return h < 12 ? 'Bom dia,' : h < 18 ? 'Boa tarde,' : 'Boa noite,'; }
 function quando(ts) {
   const d = new Date(ts), now = new Date();
@@ -163,7 +165,7 @@ async function contarNaoLidos() {
 }
 const ROTAS = {
   inicio: pgInicio, eventos: pgEventos, evento: pgEvento, avisos: pgAvisos, aviso: pgAviso, 'novo-aviso': pgNovoAviso,
-  calendario: pgCalendario, 'nova-data': pgNovaData, chamada: pgChamada, gestao: pgGestao, gevento: pgGEvento, 'form-evento': pgFormEvento,
+  calendario: pgCalendario, chamada: pgChamada, gestao: pgGestao, gevento: pgGEvento, 'form-evento': pgFormEvento,
   pessoas: pgPessoas, pessoa: pgPessoa, departamentos: pgDepartamentos, conta: pgConta,
 };
 async function render() {
@@ -213,7 +215,7 @@ function pgAuth() {
     app.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { S.auth = b.dataset.mode; pgAuth(); });
     ligarInstalar(); return;
   }
-  const sem = Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}">${semTxt(i + 1)}</option>`).join('');
+  const sem = Array.from({ length: NSEM }, (_, i) => `<option value="${i + 1}">${semTxt(i + 1)}</option>`).join('');
   const titulos = { cadastro: ['Crie seu cadastro', 'Leva menos de um minuto. Ao concluir, sua credencial com QR Code fica pronta.'], entrar: ['Entrar', 'Use o e-mail e a senha do seu cadastro.'], esqueci: ['Recuperar senha', 'Enviaremos um link para você criar uma nova senha.'] };
   const [t, s] = titulos[m];
   app.innerHTML = `<div class="screen light no-nav"><div class="auth">
@@ -296,7 +298,7 @@ async function abrirQR() {
   el.innerHTML = `<div class="top"><img src="${LOGO.sigla}" alt="SALT-FAAMA"><button class="glass-btn round" aria-label="Fechar">${ic.close()}</button></div>
     <div class="badge-card"><div class="head"><span class="eyebrow">Credencial</span><span class="status ok" style="font-size:11px">Ativa</span></div>
       <div class="qr">${qrSvg(qrPayload(p))}</div><div class="sep"></div>
-      <div class="who"><b>${esc(p.nome)}</b><small>RA ${esc(p.ra)} · ${semTxt(p.semestre)}</small></div>
+      <div class="who"><b>${esc(p.nome)}</b><small>${idLinha(p)}</small></div>
       <div class="foot"><img src="${LOGO.sigla}" alt=""></div></div>
     <div class="qr-hint"><span style="display:inline-flex;align-items:center;gap:8px">${ic.sun()} Aumente o brilho se a leitura falhar</span><small>Código pessoal e intransferível</small></div>`;
   document.body.appendChild(el);
@@ -347,7 +349,7 @@ async function pgInicio() {
       extra: `<div class="hero-title"><span class="sub">${saudacao()}</span><h1>${esc(nomeCurto(p.nome))}</h1>${role() !== 'aluno' ? `<span class="role-chip" style="align-self:flex-start;margin-top:6px">${ic.shield()} ${PAPEL[role()]}</span>` : ''}</div>` })}
     <div class="content ov-xl">
       <button class="credential" id="cred">${CARD_MOTIF}
-        <div class="info"><div style="display:flex;flex-direction:column;gap:6px"><span class="label">${ic.scan()} MEU QR CODE</span><span class="name">${esc(p.nome)}</span><span class="ra">RA ${esc(p.ra)} · ${semTxt(p.semestre)}</span></div>
+        <div class="info"><div style="display:flex;flex-direction:column;gap:6px"><span class="label">${ic.scan()} MEU QR CODE</span><span class="name">${esc(p.nome)}</span><span class="ra">${idLinha(p)}</span></div>
         <span class="cta">${ic.expand()} Ampliar QR Code</span></div>
         <div class="qr-tile">${qrSvg(qrPayload(p))}</div></button>
       ${aviso ? `<a class="row-card unread" href="#aviso/${aviso.id}" style="margin-top:-8px"><span class="icon-tile gold">${ic.mega()}</span><div class="row-main"><span class="status gold" style="font-size:10.5px;letter-spacing:.12em">NOVO AVISO · ${esc(quando(aviso.publicar_em)).toUpperCase()}</span><span class="row-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(aviso.titulo)}</span></div>${ic.chev()}</a>` : ''}
@@ -474,7 +476,7 @@ async function pgNovoAviso() {
   else { const r = await q(sb.from('departamento_responsaveis').select('departamento_id,cargo').eq('perfil_id', S.perfil.id)); meusDeps = dl.filter(d => r.some(x => x.departamento_id === d.id)); }
   const turmas = await q(sb.from('turmas').select('id,nome,fim').order('inicio', { ascending: false, nullsFirst: false }));
   const st = { publico: 'todos', notificar: true, agendar: false };
-  const sem = Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}">${semTxt(i + 1)}</option>`).join('');
+  const sem = Array.from({ length: NSEM }, (_, i) => `<option value="${i + 1}">${semTxt(i + 1)}</option>`).join('');
   app.innerHTML = screen(`${topbar('avisos', `<span class="role-chip" style="background:var(--navy-800);color:#E0BF73;border:0">${PAPEL[role()]}</span>`)}
     <div style="padding:22px 22px 0"><h1 style="font-size:27px;font-weight:800;color:var(--navy-800)">Novo aviso</h1></div>
     ${!meusDeps.length ? `<div class="content pad"><div class="banner">Você ainda não está vinculado a nenhum departamento. Peça ao administrador para vincular você ao departamento que coordena.</div></div>` : `
@@ -527,62 +529,47 @@ async function pgCalendario() {
   loading('calendario');
   const base = S.cal || (() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); })(); S.cal = base;
   const y = base.getFullYear(), mo = base.getMonth(); const ini = iso(new Date(y, mo, 1)), fim = iso(new Date(y, mo + 1, 0));
-  const [doMes, proximos] = await Promise.all([
-    q(sb.from('calendario').select('*').lte('inicio', fim).or(`fim.gte.${ini},and(fim.is.null,inicio.gte.${ini})`).order('inicio')),
-    q(sb.from('calendario').select('*').or(`inicio.gte.${hoje()},fim.gte.${hoje()}`).order('inicio').limit(8)),
-  ]);
-  const evDia = dia => doMes.filter(e => e.inicio <= dia && (e.fim || e.inicio) >= dia);
+  const [todos, dl] = await Promise.all([q(sb.from('turmas').select('id,nome,inicio,fim,local,categoria,departamento_id').not('inicio', 'is', null).order('inicio')), deps()]);
+  const dn = id => (dl.find(d => d.id === id) || {}).nome || '';
+  const fimDe = e => e.fim || e.inicio;
+  const longo = e => (parseD(fimDe(e)) - parseD(e.inicio)) / 864e5 > 6;
+  const doMes = todos.filter(e => e.inicio <= fim && fimDe(e) >= ini);
+  // eventos longos (cursos) marcam só o início e o término; eventos curtos marcam todos os dias
+  const evDia = dia => doMes.filter(e => longo(e) ? (e.inicio === dia || fimDe(e) === dia) : (e.inicio <= dia && fimDe(e) >= dia));
+  const proximos = todos.filter(e => fimDe(e) >= hoje()).slice(0, 10);
+  const cat = e => CAT[e.categoria] ? e.categoria : 'salt';
   const primeiro = new Date(y, mo, 1).getDay(), nDias = new Date(y, mo + 1, 0).getDate();
   let cells = ''; for (let i = 0; i < primeiro; i++) cells += '<span></span>';
   for (let d = 1; d <= nDias; d++) {
     const dia = iso(new Date(y, mo, d)), evs = evDia(dia), wd = (primeiro + d - 1) % 7;
-    const range = evs.find(e => e.fim && e.fim !== e.inicio);
+    const range = evs.find(e => !longo(e) && fimDe(e) !== e.inicio);
     let cls = 'cal-day'; let style = '';
     if (wd === 0 || wd === 6) cls += ' weekend';
     if (evs.length) cls += ' has';
-    if (range) { cls += ' band'; style = `background:${CAT[range.categoria][2]}`; if (dia === range.inicio || wd === 0 || d === 1) cls += ' band-start'; if (dia === range.fim || wd === 6 || d === nDias) cls += ' band-end'; }
+    if (range) { cls += ' band'; style = `background:${CAT[cat(range)][2]}`; if (dia === range.inicio || wd === 0 || d === 1) cls += ' band-start'; if (dia === fimDe(range) || wd === 6 || d === nDias) cls += ' band-end'; }
     if (dia === hoje()) cls += ' today';
     if (S.calSel === dia) cls += ' sel';
-    const dots = [...new Set(evs.map(e => e.categoria))].map(c => `<i class="${CAT[c][1]}"></i>`).join('');
+    const dots = [...new Set(evs.map(cat))].map(c => `<i class="${CAT[c][1]}"></i>`).join('');
     cells += `<button class="${cls}" style="${style}" data-dia="${dia}" aria-label="${d} de ${MESES[mo]}${evs.length ? ', ' + evs.length + ' evento(s)' : ''}"><span class="n">${d}</span><span class="dots">${dots}</span></button>`;
   }
-  const item = e => { const [lbl, , , tile] = CAT[e.categoria]; const multi = e.fim && e.fim !== e.inicio; const d = parseD(e.inicio);
-    const tileHtml = `<div class="date-tile ${tile}"><b class="${multi ? 'sm' : ''}">${multi ? `${String(d.getDate()).padStart(2, '0')}–${String(parseD(e.fim).getDate()).padStart(2, '0')}` : String(d.getDate()).padStart(2, '0')}</b><small>${multi && parseD(e.fim).getMonth() !== d.getMonth() ? MES3[d.getMonth()] + '+' : MES3[d.getMonth()]}</small></div>`;
-    return `<div class="row-card" style="cursor:default">${tileHtml}<div class="row-main"><span class="row-title">${esc(e.titulo)}</span><span class="row-sub">${esc([e.horario, e.local].filter(Boolean).join(' · ') || lbl)}</span>${e.descricao ? `<span class="row-sub" style="font-size:12px">${esc(e.descricao)}</span>` : ''}</div>${canCalEdit() ? `<button class="light-btn" data-del="${e.id}" aria-label="Apagar data" style="width:38px;height:38px;box-shadow:none;background:#F3F5F9;color:var(--bad)">${ic.trash()}</button>` : `<span class="pill ${tile === 'red' ? 'bad' : tile}">${lbl}</span>`}</div>`; };
+  const destino = e => isGestao() ? 'gevento/' + e.id : 'evento/' + e.id;
+  const item = (e, dia) => { const [lbl, , , tile] = CAT[cat(e)]; const d = parseD(e.inicio), f = parseD(fimDe(e)); const outroMes = f.getMonth() !== d.getMonth() || f.getFullYear() !== d.getFullYear(); const multi = fimDe(e) !== e.inicio && !outroMes;
+    const tileHtml = `<div class="date-tile ${tile}"><b class="${multi ? 'sm' : ''}">${multi ? `${String(d.getDate()).padStart(2, '0')}–${String(f.getDate()).padStart(2, '0')}` : String(d.getDate()).padStart(2, '0')}</b><small>${MES3[d.getMonth()]}</small></div>`;
+    const marco = (dia && longo(e) ? (dia === e.inicio ? 'Início · ' : 'Término · ') : '') + (outroMes ? `até ${brCurto(fimDe(e))} · ` : '');
+    return `<a class="row-card" href="#${destino(e)}">${tileHtml}<div class="row-main"><span class="row-title">${esc(e.nome)}</span><span class="row-sub">${esc(marco + ([dn(e.departamento_id), e.local].filter(Boolean).join(' · ') || lbl))}</span></div><span class="pill ${tile === 'red' ? 'bad' : tile}">${lbl}</span></a>`; };
   const selList = S.calSel ? evDia(S.calSel) : null;
-  app.innerHTML = screen(`${hero({ ov: 'ov', logo: true, right: canCalEdit() ? `<a class="btn btn-gold btn-sm" href="#nova-data">${ic.plus()} Nova data</a>` : '',
+  app.innerHTML = screen(`${hero({ ov: 'ov', logo: true, right: isGestao() ? `<a class="btn btn-gold btn-sm" href="#form-evento">${ic.plus()} Novo evento</a>` : '',
       extra: `<div style="display:flex;align-items:flex-end;justify-content:space-between;position:relative"><div class="hero-title"><span class="eyebrow">Calendário do SALT</span><h1>${MESES[mo][0].toUpperCase() + MESES[mo].slice(1)} <span style="font-weight:600;color:#B7C6D8">${y}</span></h1></div><div style="display:flex;gap:8px"><button class="glass-btn" id="prev" aria-label="Mês anterior">${ic.back()}</button><button class="glass-btn" id="next" aria-label="Próximo mês" style="transform:scaleX(-1)">${ic.back()}</button></div></div>` })}
     <div class="content ov">
       <section class="card lift cal"><div class="cal-head"><span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span></div><div class="cal-grid">${cells}</div>
         <div class="legend"><span><i class="c-salt"></i>SALT</span><span><i class="c-faama"></i>FAAMA</span><span><i class="c-feriado"></i>Feriado</span></div></section>
-      ${selList ? `<section class="section"><div class="section-head"><h2>${parseD(S.calSel).getDate()} de ${MESES[parseD(S.calSel).getMonth()]}</h2><button class="link-gold" id="limpar">Ver próximos</button></div>${selList.length ? selList.map(item).join('') : '<div class="card empty">Nada marcado neste dia.</div>'}</section>`
-        : `<section class="section"><div class="section-head"><h2>Próximos eventos</h2></div>${proximos.length ? proximos.map(item).join('') : '<div class="card empty">Nenhuma data marcada a partir de hoje.</div>'}</section>`}
+      ${selList ? `<section class="section"><div class="section-head"><h2>${parseD(S.calSel).getDate()} de ${MESES[parseD(S.calSel).getMonth()]}</h2><button class="link-gold" id="limpar">Ver próximos</button></div>${selList.length ? selList.map(e => item(e, S.calSel)).join('') : '<div class="card empty">Nenhum evento neste dia.</div>'}</section>`
+        : `<section class="section"><div class="section-head"><h2>Próximos eventos</h2></div>${proximos.length ? proximos.map(e => item(e)).join('') : '<div class="card empty">Nenhum evento a partir de hoje.</div>'}</section>`}
     </div>`, 'calendario');
   document.getElementById('prev').onclick = () => { S.cal = new Date(y, mo - 1, 1); S.calSel = null; pgCalendario(); };
   document.getElementById('next').onclick = () => { S.cal = new Date(y, mo + 1, 1); S.calSel = null; pgCalendario(); };
   app.querySelectorAll('[data-dia]').forEach(b => b.onclick = () => { S.calSel = S.calSel === b.dataset.dia ? null : b.dataset.dia; pgCalendario(); });
   const l = document.getElementById('limpar'); if (l) l.onclick = () => { S.calSel = null; pgCalendario(); };
-  app.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => { if (b.dataset.c !== '1') { b.dataset.c = '1'; toast('Toque de novo para apagar esta data.'); return; } const { error } = await sb.from('calendario').delete().eq('id', b.dataset.del); if (error) return toast(erro(error)); toast('Data apagada.'); pgCalendario(); });
-}
-async function pgNovaData() {
-  if (!canCalEdit()) return ir('calendario');
-  const st = { cat: 'salt' };
-  app.innerHTML = screen(`${topbar('calendario')}<div style="padding:22px 22px 0"><h1 style="font-size:27px;font-weight:800;color:var(--navy-800)">Nova data no calendário</h1></div>
-    <form class="content pad" id="f" novalidate><section class="card form">
-      <label class="field">Título<span class="input-wrap"><input id="tit" required placeholder="Ex.: Semana de Oração"></span></label>
-      <div class="field">Categoria<div class="chips" id="cat">${Object.entries(CAT).map(([k, [l, c]]) => `<button type="button" class="chip ${k === 'salt' ? 'active' : ''}" data-v="${k}"><i class="${c}" style="width:8px;height:8px;border-radius:50%;display:inline-block"></i>${l}</button>`).join('')}</div></div>
-      <div class="grid2"><label class="field">Início<span class="input-wrap"><input id="ini" type="date" required value="${hoje()}"></span></label><label class="field">Término (opcional)<span class="input-wrap"><input id="fim" type="date"></span></label></div>
-      <div class="grid2"><label class="field">Horário<span class="input-wrap"><input id="hor" placeholder="Ex.: 19h30"></span></label><label class="field">Local<span class="input-wrap"><input id="loc" placeholder="Ex.: Auditório"></span></label></div>
-      <label class="field">Descrição (opcional)<span class="input-wrap ta"><textarea id="desc" style="min-height:90px"></textarea></span></label>
-    </section><button class="btn btn-gold btn-block" type="submit">Salvar data</button></form>`, 'calendario', { light: true });
-  document.querySelectorAll('#cat .chip').forEach(c => c.onclick = () => { st.cat = c.dataset.v; document.querySelectorAll('#cat .chip').forEach(x => x.classList.toggle('active', x === c)); });
-  document.getElementById('f').onsubmit = async e => {
-    e.preventDefault(); const v = id => document.getElementById(id).value.trim();
-    if (!v('tit')) return toast('Informe o título.'); if (!v('ini')) return toast('Informe a data de início.');
-    if (v('fim') && v('fim') < v('ini')) return toast('O término precisa ser depois do início.');
-    const { error } = await sb.from('calendario').insert({ titulo: v('tit'), categoria: st.cat, inicio: v('ini'), fim: v('fim') || null, horario: v('hor') || null, local: v('loc') || null, descricao: v('desc') || null, criado_por: S.perfil.id });
-    if (error) return toast(erro(error)); toast('Data salva no calendário.'); S.cal = new Date(parseD(v('ini')).getFullYear(), parseD(v('ini')).getMonth(), 1); ir('calendario');
-  };
 }
 
 /* ================= CHAMADA ================= */
@@ -746,7 +733,6 @@ async function pgGestao() {
       <div class="shortcuts" style="grid-auto-flow:row;grid-template-columns:repeat(2,minmax(0,1fr))">
         <a class="shortcut" href="#form-evento"><span class="icon-tile gold">${ic.plus()}</span>Novo evento</a>
         <a class="shortcut" href="#novo-aviso"><span class="icon-tile gold">${ic.mega(20)}</span>Novo aviso</a>
-        <a class="shortcut" href="#nova-data"><span class="icon-tile">${ic.cal(true)}</span>Nova data</a>
         <a class="shortcut" href="#chamada"><span class="icon-tile">${ic.scan()}</span>Fazer chamada</a>
         ${isAdmin() ? `<a class="shortcut" href="#pessoas"><span class="icon-tile">${ic.users()}</span>Pessoas e acessos</a><a class="shortcut" href="#departamentos"><span class="icon-tile">${ic.dept()}</span>Departamentos</a>` : ''}
       </div>
@@ -775,7 +761,7 @@ async function pgGEvento(id) {
   app.innerHTML = screen(`${hero({ back: voltar, ov: 'ov', right: g ? `<a class="glass-btn" href="#form-evento/${t.id}" aria-label="Editar evento">${ic.edit()}</a>` : '', eyebrow: dep ? esc(dep) : 'Evento', title: t.nome,
       meta: `<span>${ic.clock('#E0BF73')}${t.carga_horaria} h</span>${t.inicio ? `<span>${ic.calSm('#E0BF73')}${periodo(t)}</span>` : ''}<span>${ic.users('#E0BF73')}${ativos.length} inscrito(s)</span><span>${aulas.length} aula(s)</span>` })}
     <div class="content ov" style="gap:16px">
-      <div class="grid2"><a class="btn btn-white" href="#chamada/${t.id}" style="box-shadow:var(--shadow-lift)">${ic.scan()} Chamada</a><a class="btn btn-white" href="#evento/${t.id}" style="box-shadow:var(--shadow-lift)">Ver como aluno</a></div>
+      <div class="grid2"><a class="btn btn-white" href="#chamada/${t.id}" style="box-shadow:var(--shadow-lift)">${ic.scan()} Chamada</a><a class="btn btn-white" href="#evento/${t.id}" style="box-shadow:var(--shadow-lift)">Página do evento</a></div>
       ${pend.length && g ? `<section class="card" style="gap:0;padding:6px 16px"><div class="section-head" style="padding:10px 0 4px"><h2 style="font-size:16px">Aguardando aprovação · ${pend.length}</h2></div>${pend.map(m => `<div class="person-row"><span class="avatar absent">${esc(iniciais(m.perfis.nome))}</span><div class="person-main"><b>${esc(m.perfis.nome)}</b><small>RA ${esc(m.perfis.ra)} · ${semTxt(m.perfis.semestre)}</small></div><div style="display:flex;gap:6px"><button class="btn btn-sm btn-navy" data-ap="${m.id}">Aprovar</button><button class="btn btn-sm btn-danger" data-rc="${m.id}" aria-label="Recusar">${ic.x(12, 3)}</button></div></div>`).join('')}</section>` : ''}
       <section class="card" style="gap:0;padding:6px 16px"><div class="section-head" style="padding:10px 0 4px"><h2 style="font-size:16px">Inscritos e frequência</h2><span style="font-size:12px;color:var(--muted2)">mínimo ${minFreq(t)}%</span></div>
         ${ativos.length ? ativos.map(m => { const f = fq(m.aluno_id); const ok = f.n > 0 && f.pct >= minFreq(t); const pode = g && apto(t, f);
@@ -808,7 +794,7 @@ async function pgFormEvento(id) {
   const dl = await deps();
   let t = { nome: '', descricao: '', carga_horaria: '', inicio: '', fim: '', local: '', requer_aprovacao: false, inscricoes_abertas: true, frequencia_minima: 75, departamento_id: '', assinaturas: [{ nome: '', funcao: 'Coordenação' }, { nome: '', funcao: 'Direção do SALT' }] };
   if (id) { const r = await q(sb.from('turmas').select('*').eq('id', id).maybeSingle()); if (!r) return ir('gestao'); t = r; }
-  const st = { aprov: !!t.requer_aprovacao, abertas: !!t.inscricoes_abertas };
+  const st = { aprov: !!t.requer_aprovacao, abertas: !!t.inscricoes_abertas, cat: t.categoria || 'salt' };
   app.innerHTML = screen(`${topbar(id ? 'gevento/' + id : 'gestao')}<div style="padding:22px 22px 0"><h1 style="font-size:27px;font-weight:800;color:var(--navy-800)">${id ? 'Editar evento' : 'Novo evento'}</h1></div>
     <form class="content pad" id="f" novalidate style="gap:14px">
       <section class="card form">
@@ -819,6 +805,7 @@ async function pgFormEvento(id) {
         <div class="grid2"><label class="field">Início<span class="input-wrap"><input name="inicio" type="date" required value="${esc(t.inicio)}"></span></label><label class="field">Término<span class="input-wrap"><input name="fim" type="date" required value="${esc(t.fim)}"></span></label></div>
         <label class="field">Local<span class="input-wrap"><input name="local" value="${esc(t.local)}" placeholder="Ex.: Auditório principal"></span></label>
       </section>
+      <section class="card"><b style="font-size:14px;color:var(--navy-800)">Categoria no calendário</b><div class="chips" id="cat">${Object.entries(CAT).map(([k, [l, c]]) => `<button type="button" class="chip ${k === st.cat ? 'active' : ''}" data-v="${k}"><i class="${c}" style="width:8px;height:8px;border-radius:50%;display:inline-block"></i>${l}</button>`).join('')}</div><span style="font-size:12px;color:var(--muted2)">O evento aparece automaticamente no calendário do SALT, do início ao término.</span></section>
       <section class="card"><b style="font-size:14px;color:var(--navy-800)">Como o aluno entra no evento?</b>
         <label class="radio-card ${!st.aprov ? 'on' : ''}"><input type="radio" name="aprov" value="0" ${!st.aprov ? 'checked' : ''}><span><b>Inscrição imediata</b><small>O aluno se inscreve e já fica inscrito.</small></span></label>
         <label class="radio-card ${st.aprov ? 'on' : ''}"><input type="radio" name="aprov" value="1" ${st.aprov ? 'checked' : ''}><span><b>Precisa de aprovação</b><small>A secretaria ou o administrador aprova cada inscrição.</small></span></label>
@@ -831,12 +818,13 @@ async function pgFormEvento(id) {
     </form>`, 'gestao', { light: true });
   const f = document.getElementById('f'), box = document.getElementById('sigs');
   f.querySelectorAll('input[name=aprov]').forEach(r => r.onchange = () => { st.aprov = r.value === '1'; f.querySelectorAll('.radio-card').forEach(c => c.classList.toggle('on', c.querySelector('input').checked)); });
+  f.querySelectorAll('#cat .chip').forEach(c => c.onclick = () => { st.cat = c.dataset.v; f.querySelectorAll('#cat .chip').forEach(y => y.classList.toggle('active', y === c)); });
   const sab = document.getElementById('sAb'); sab.onclick = () => { st.abertas = !st.abertas; sab.setAttribute('aria-checked', String(st.abertas)); };
   document.getElementById('addSig').onclick = () => { if (box.children.length >= MAXSIG) return toast(`Máximo de ${MAXSIG} assinaturas.`); box.insertAdjacentHTML('beforeend', sigRow()); };
   box.onclick = e => { const b = e.target.closest('[data-rmsig]'); if (b) b.closest('.sig').remove(); };
   f.onsubmit = async e => {
     e.preventDefault(); const fd = new FormData(f); const ns = fd.getAll('sigNome'), fs = fd.getAll('sigFuncao');
-    const d = { nome: String(fd.get('nome')).trim(), departamento_id: fd.get('departamento_id') || null, descricao: String(fd.get('descricao')).trim() || null, carga_horaria: Number(fd.get('carga_horaria')), frequencia_minima: Number(fd.get('frequencia_minima')), inicio: fd.get('inicio') || null, fim: fd.get('fim') || null, local: String(fd.get('local')).trim() || null, requer_aprovacao: st.aprov, inscricoes_abertas: st.abertas,
+    const d = { nome: String(fd.get('nome')).trim(), departamento_id: fd.get('departamento_id') || null, descricao: String(fd.get('descricao')).trim() || null, carga_horaria: Number(fd.get('carga_horaria')), frequencia_minima: Number(fd.get('frequencia_minima')), inicio: fd.get('inicio') || null, fim: fd.get('fim') || null, local: String(fd.get('local')).trim() || null, requer_aprovacao: st.aprov, inscricoes_abertas: st.abertas, categoria: st.cat,
       assinaturas: ns.map((n, i) => ({ nome: String(n).trim(), funcao: String(fs[i] || '').trim() })).filter(s => s.nome || s.funcao).slice(0, MAXSIG) };
     if (!d.nome) return toast('Informe o nome do evento.'); if (!d.departamento_id) return toast('Escolha o departamento responsável.');
     if (!d.carga_horaria) return toast('Informe a carga horária.'); if (!d.inicio || !d.fim) return toast('Informe o início e o término.');
@@ -909,28 +897,59 @@ async function pgPessoa(id) {
 async function pgDepartamentos() {
   if (!isAdmin()) return ir('inicio');
   loading('gestao');
-  const [dl, resp] = await Promise.all([q(sb.from('departamentos').select('*').order('nome')), q(sb.from('departamento_responsaveis').select('departamento_id,cargo,perfis(nome)'))]);
-  app.innerHTML = screen(`${hero({ back: 'gestao', eyebrow: 'Administração', title: 'Departamentos', sub: 'Os responsáveis são definidos em Pessoas e acessos.' })}
+  const [dl, resp] = await Promise.all([q(sb.from('departamentos').select('*').order('nome')), q(sb.from('departamento_responsaveis').select('departamento_id,perfil_id,cargo,perfis(nome,papel)'))]);
+  app.innerHTML = screen(`${hero({ back: 'gestao', eyebrow: 'Administração', title: 'Departamentos', sub: 'Toque em um departamento para definir quem responde por ele.' })}
     <div class="content pad"><section class="section">${dl.map(d => { const r = resp.filter(x => x.departamento_id === d.id);
-      return `<div class="row-card" style="cursor:default;align-items:flex-start;padding:14px 16px"><span class="icon-tile ${d.chave === 'secretaria' ? 'gold' : ''}">${ic.dept()}</span><div class="row-main"><span class="row-title">${esc(d.nome)}</span><span class="row-sub">${r.length ? r.map(x => `${esc(x.perfis.nome)} · ${esc(x.cargo)}`).join('<br>') : 'Sem responsável definido'}</span>${d.chave === 'secretaria' ? '<span class="status gold">Vinculado automaticamente às contas de secretário</span>' : ''}</div></div>`; }).join('')}</section>
+      return `<button class="row-card" data-dep="${d.id}" style="align-items:flex-start;padding:14px 16px"><span class="icon-tile ${d.chave === 'secretaria' ? 'gold' : ''}">${ic.dept()}</span><div class="row-main"><span class="row-title">${esc(d.nome)}</span><span class="row-sub">${r.length ? r.map(x => `${esc(x.perfis.nome)} · ${esc(x.cargo)}`).join('<br>') : 'Sem responsável definido'}</span></div>${ic.chev()}</button>`; }).join('')}</section>
       <form class="card" id="f"><b style="font-size:14px;color:var(--navy-800)">Novo departamento</b><span class="input-wrap"><input id="nm" placeholder="Nome do departamento"></span><button class="btn btn-navy btn-sm" style="align-self:flex-start">Adicionar</button></form></div>`, 'gestao');
   document.getElementById('f').onsubmit = async e => { e.preventDefault(); const v = document.getElementById('nm').value.trim(); if (!v) return; const { error } = await sb.from('departamentos').insert({ nome: v }); if (error) return toast(erro(error)); S.deps = null; toast('Departamento criado.'); pgDepartamentos(); };
+  app.querySelectorAll('[data-dep]').forEach(b => b.onclick = () => abrirDep(dl.find(d => d.id === b.dataset.dep), resp.filter(x => x.departamento_id === b.dataset.dep)));
+}
+function abrirDep(d, resp) {
+  const sec = d.chave === 'secretaria';
+  const cargos = sec ? ['Secretário(a)'] : ['Coordenador(a)', 'Diretor(a)', 'Responsável'];
+  abrirSheet(`<h2 style="font-size:19px;font-weight:800;color:var(--navy-800)">${esc(d.nome)}</h2>
+    <div><span class="group-label">Responsáveis</span>${resp.length ? resp.map(r => `<div class="person-row"><span class="avatar">${esc(iniciais(r.perfis.nome))}</span><div class="person-main"><b>${esc(r.perfis.nome)}</b><small>${esc(r.cargo)}</small></div><button class="light-btn" data-rm="${r.perfil_id}" aria-label="Remover" style="width:38px;height:38px;box-shadow:none;background:#F3F5F9;color:var(--muted2)">${ic.x(12, 3)}</button></div>`).join('') : '<div class="empty" style="padding:12px 0">Ninguém atribuído ainda.</div>'}</div>
+    <div style="display:flex;flex-direction:column;gap:10px"><span class="group-label">Atribuir pessoa</span>
+      <span class="input-wrap">${ic.search()}<input id="bq" placeholder="Buscar por nome ou RA" autocomplete="off"></span>
+      <span class="input-wrap"><select id="cg">${cargos.map(c => `<option>${c}</option>`).join('')}</select></span>
+      <div id="res"></div>
+      <span style="font-size:12px;color:var(--muted2)">${sec ? 'Quem for atribuído aqui passa a ter o acesso de Secretário(a).' : 'Se a pessoa for aluno ou monitor, ela passa a ter o acesso de Professor(a), para poder publicar avisos por este departamento.'}</span></div>`, sh => {
+    const ja = new Set(resp.map(r => r.perfil_id));
+    sh.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => { const { error } = await sb.from('departamento_responsaveis').delete().eq('departamento_id', d.id).eq('perfil_id', b.dataset.rm); if (error) return toast(erro(error)); fecharSheet(); toast('Responsável removido.'); pgDepartamentos(); });
+    let tm; sh.querySelector('#bq').oninput = e => { clearTimeout(tm); tm = setTimeout(async () => {
+      const v = e.target.value.trim().replace(/[,%()*\\]/g, ''); const res = sh.querySelector('#res');
+      if (v.length < 2) { res.innerHTML = ''; return; }
+      const r = await sb.from('perfis').select('id,nome,ra,papel').or(`nome.ilike.%${v}%,ra.ilike.%${v}%`).order('nome').limit(20);
+      if (r.error) { res.innerHTML = `<div class="banner err">${esc(erro(r.error))}</div>`; return; }
+      const lista = r.data.filter(x => !ja.has(x.id));
+      res.innerHTML = lista.length ? lista.map(x => `<div class="person-row"><span class="avatar">${esc(iniciais(x.nome))}</span><div class="person-main"><b>${esc(x.nome)}</b><small>${PAPEL[x.papel]}${x.papel === 'aluno' ? ' · RA ' + esc(x.ra) : ''}</small></div><button class="btn btn-sm btn-navy" data-add="${x.id}" data-ra="${esc(x.ra)}" data-papel="${x.papel}">Atribuir</button></div>`).join('') : '<div class="empty" style="padding:12px 0">Ninguém encontrado.</div>';
+      res.querySelectorAll('[data-add]').forEach(b => b.onclick = async () => {
+        b.disabled = true; const papel = b.dataset.papel;
+        const novo = sec ? (papel === 'admin' ? null : 'secretario') : (['aluno', 'monitor'].includes(papel) ? 'professor' : null);
+        if (novo && novo !== papel) { const { error } = await sb.rpc('definir_papel', { p_ra: b.dataset.ra, p_papel: novo }); if (error) { b.disabled = false; return toast(erro(error)); } }
+        const { error } = await sb.from('departamento_responsaveis').upsert({ departamento_id: d.id, perfil_id: b.dataset.add, cargo: sh.querySelector('#cg').value }, { onConflict: 'departamento_id,perfil_id' });
+        if (error) { b.disabled = false; return toast(erro(error)); }
+        fecharSheet(); toast('Responsável atribuído.'); pgDepartamentos();
+      });
+    }, 300); };
+  });
 }
 
 /* ================= CONTA ================= */
 async function pgConta() {
   const p = S.perfil;
-  const sem = Array.from({ length: 10 }, (_, i) => `<option value="${i + 1}" ${p.semestre === i + 1 ? 'selected' : ''}>${semTxt(i + 1)}</option>`).join('');
+  const sem = Array.from({ length: NSEM }, (_, i) => `<option value="${i + 1}" ${p.semestre === i + 1 ? 'selected' : ''}>${semTxt(i + 1)}</option>`).join('');
   let deptos = '';
   if (['professor', 'secretario'].includes(role())) { try { const r = await q(sb.from('departamento_responsaveis').select('cargo,departamentos(nome)').eq('perfil_id', p.id)); if (r.length) deptos = r.map(x => `${esc(x.cargo)} · ${esc(x.departamentos.nome)}`).join('<br>'); } catch (e) {} }
-  app.innerHTML = screen(`${hero({ logo: true, extra: `<div style="display:flex;align-items:center;gap:14px;position:relative"><span class="avatar-btn" style="width:60px;height:60px"><span style="font-size:19px">${esc(iniciais(p.nome))}</span></span><div style="min-width:0"><h1 style="font-size:22px">${esc(p.nome)}</h1><span class="sub">RA ${esc(p.ra)} · ${PAPEL[role()]}</span></div></div>` })}
+  app.innerHTML = screen(`${hero({ logo: true, extra: `<div style="display:flex;align-items:center;gap:14px;position:relative"><span class="avatar-btn" style="width:60px;height:60px"><span style="font-size:19px">${esc(iniciais(p.nome))}</span></span><div style="min-width:0"><h1 style="font-size:22px">${esc(p.nome)}</h1><span class="sub">${ehAluno(p) ? `RA ${esc(p.ra)} · ${semTxt(p.semestre)}` : PAPEL[role()]}</span></div></div>` })}
     <div class="content pad">
       <button class="row-card" id="qr"><span class="icon-tile">${ic.scan()}</span><div class="row-main"><span class="row-title">Meu QR Code</span><span class="row-sub">Abrir credencial em tela cheia</span></div>${ic.chev()}</button>
       ${deptos ? `<div class="card"><b style="font-size:14px;color:var(--navy-800)">Departamentos</b><span style="font-size:13px;color:var(--muted);line-height:1.6">${deptos}</span></div>` : ''}
       <form class="card form" id="f"><b style="font-size:14px;color:var(--navy-800)">Meus dados</b>
         <label class="field">Nome completo<span class="input-wrap">${ic.person()}<input name="nome" required minlength="3" value="${esc(p.nome)}"></span><span class="hint">É o nome que sai nos certificados.</span></label>
-        <label class="field">Semestre atual<span class="input-wrap">${ic.cap()}<select name="semestre">${sem}</select></span></label>
-        <span style="font-size:12.5px;color:var(--muted)">E-mail: <b>${esc(p.email)}</b> · RA: <b>${esc(p.ra)}</b></span>
+        ${ehAluno(p) ? `<label class="field">Semestre atual<span class="input-wrap">${ic.cap()}<select name="semestre">${sem}</select></span></label>` : ''}
+        <span style="font-size:12.5px;color:var(--muted)">E-mail: <b>${esc(p.email)}</b>${ehAluno(p) ? ` · RA: <b>${esc(p.ra)}</b>` : ''}</span>
         <button class="btn btn-navy btn-sm" style="align-self:flex-start">Salvar</button></form>
       ${instalarHtml()}
       <button class="btn btn-danger btn-block" id="sair">Sair da conta</button>
@@ -939,7 +958,7 @@ async function pgConta() {
   ligarInstalar();
   document.getElementById('qr').onclick = abrirQR;
   const f = document.getElementById('f');
-  f.onsubmit = async e => { e.preventDefault(); const nome = f.nome.value.trim().replace(/\s+/g, ' '), semestre = Number(f.semestre.value); if (nome.length < 3) return toast('Informe o nome completo.');
+  f.onsubmit = async e => { e.preventDefault(); const nome = f.nome.value.trim().replace(/\s+/g, ' '), semestre = f.semestre ? Number(f.semestre.value) : p.semestre; if (nome.length < 3) return toast('Informe o nome completo.');
     const { error } = await sb.from('perfis').update({ nome, semestre }).eq('id', p.id); if (error) return toast(erro(error)); S.perfil = { ...p, nome, semestre }; toast('Dados salvos.'); pgConta(); };
   document.getElementById('sair').onclick = async () => { await sb.auth.signOut(); S.auth = 'welcome'; location.hash = ''; };
 }

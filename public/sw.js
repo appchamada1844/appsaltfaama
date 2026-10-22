@@ -1,6 +1,6 @@
 /* SALT-FAAMA service worker: rede primeiro, cache como reserva (funciona sem internet para abrir a credencial) */
-const CACHE = 'salt-faama-v3';
-const CORE = ['./', 'index.html', 'styles.css?v=3', 'app.js?v=3', 'manifest.webmanifest',
+const CACHE = 'salt-faama-v4';
+const CORE = ['./', 'index.html', 'styles.css?v=4', 'app.js?v=4', 'manifest.webmanifest',
   'vendor/supabase.js', 'vendor/591.supabase.js', 'vendor/qrcode.js', 'vendor/jsQR.js', 'vendor/jspdf.umd.min.js',
   'img/salt-faama-branco.png', 'img/salt-faama-marinho.png', 'img/salt-faama-sigla-branco.png', 'img/salt-faama-sigla-marinho.png',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/favicon-32.png'];
